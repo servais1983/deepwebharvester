@@ -60,11 +60,19 @@ The platform routes all network traffic through the Tor SOCKS5 proxy, performs B
 - **SQLite query support** — Results are immediately queryable for ad-hoc analysis
 - **Timestamped exports** — Each run produces uniquely named output files
 
+### Intelligence and reporting
+
+- **Automated IOC extraction** — Regex-based extraction of IPv4 addresses, email addresses, MD5/SHA1/SHA256 hashes, CVE identifiers, Bitcoin and Monero wallet addresses, Tor v3 onion references, clearweb domains, HTTP(S) URLs, and PGP key blocks
+- **Threat classification** — Nine threat categories (Malware, Financial Fraud, Credentials, Hacking Services, Marketplaces, and more) with keyword-density-based risk scoring on a 0–10 scale
+- **Risk labels** — Low / Medium / High / Critical risk classification per page
+- **HTML intelligence report** — Self-contained single-file report with executive summary, risk distribution chart, IOC registry, high-risk page index, and per-site threat breakdown; no CDN or JavaScript dependencies
+- **IOC persistence** — All extracted IOC data serialised as JSON and stored in the SQLite `ioc_data` column alongside each crawl result
+
 ### Engineering quality
 
 - **Layered configuration** — Defaults → YAML file → environment variables → CLI/GUI flags
 - **Secrets via environment** — Tor control password never stored in code or config files
-- **126 automated tests** — 91% code coverage across all modules
+- **206 automated tests** — 91% code coverage across all modules
 - **GitHub Actions CI** — Multi-Python matrix (3.9–3.12) plus dependency security audit
 - **Two-stage Docker build** — Minimal runtime image, non-root execution
 - **Type-annotated codebase** — Full type hints enforced by mypy in strict mode
@@ -82,16 +90,20 @@ deepwebharvester/
   tor_manager.py    Tor session factory and circuit renewal
   extractor.py      HTML parser, URL validator, link harvester
   crawler.py        BFS engine with dedup, retries, concurrency, stats
-  storage.py        JSON / CSV / SQLite persistence
+  storage.py        JSON / CSV / SQLite persistence (with IOC column)
+  intelligence.py   IOC extraction and threat classification engine
+  report.py         Self-contained HTML intelligence report generator
 
 tests/
-  conftest.py       Shared fixtures (mock Tor, temp storage)
+  conftest.py            Shared fixtures (mock Tor, temp storage)
   test_cli.py
   test_config.py
   test_crawler.py
   test_extractor.py
   test_storage.py
   test_tor_manager.py
+  test_intelligence.py   IOC extraction and threat classification tests
+  test_report.py         HTML report generation tests
 
 .github/workflows/
   ci.yml            GitHub Actions CI pipeline
@@ -105,11 +117,13 @@ pyproject.toml      Build config, linters, test runner, coverage
 
 ```
 User (GUI or CLI)
-  -> config.py          Load layered configuration
-  -> tor_manager.py     Create Tor-proxied requests session
-  -> crawler.py         BFS crawl loop
-       -> extractor.py  Fetch, parse, extract links, hash content
-       -> storage.py    Persist results (JSON + CSV + SQLite)
+  -> config.py           Load layered configuration
+  -> tor_manager.py      Create Tor-proxied requests session
+  -> crawler.py          BFS crawl loop
+       -> extractor.py   Fetch, parse, extract links, hash content
+       -> storage.py     Persist results (JSON + CSV + SQLite)
+  -> intelligence.py     IOC extraction + threat classification
+  -> report.py           Generate self-contained HTML report
 ```
 
 ---

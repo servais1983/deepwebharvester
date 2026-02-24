@@ -30,6 +30,8 @@ from . import __version__
 from .config import AppConfig, load_config
 from .crawler import CrawlResult, Crawler
 from .extractor import PageExtractor
+from .intelligence import IntelligenceExtractor
+from .report import ReportGenerator
 from .storage import StorageManager
 from .tor_manager import TorManager
 
@@ -205,6 +207,7 @@ class App(tk.Tk):
         self._log_queue: queue.Queue = queue.Queue()
         self._result_paths: dict = {}
         self._crawl_results: list[CrawlResult] = []
+        self._intel_stats: dict = {}
 
         # Logging
         self._setup_logging()
@@ -507,25 +510,37 @@ class App(tk.Tk):
         for widget in self._results_frame.winfo_children():
             widget.destroy()
 
+        # Scrollable container
+        canvas = tk.Canvas(self._results_frame, bg=_PALETTE["panel"],
+                           highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self._results_frame, orient=tk.VERTICAL,
+                                  command=canvas.yview)
+        inner = tk.Frame(canvas, bg=_PALETTE["panel"])
+        inner.bind("<Configure>",
+                   lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
         tk.Label(
-            self._results_frame, text="Crawl Summary",
+            inner, text="Crawl Summary",
             bg=_PALETTE["panel"], fg=_PALETTE["accent"],
             font=_FONT_TITLE,
         ).pack(pady=(20, 10))
 
-        # Stats grid
-        grid = tk.Frame(self._results_frame, bg=_PALETTE["panel"])
+        # Crawl stats grid
+        grid = tk.Frame(inner, bg=_PALETTE["panel"])
         grid.pack(padx=20, pady=4)
 
-        stats = [
-            ("Sites crawled",   self._stat_crawled.get()),
+        crawl_stats = [
             ("Pages crawled",   self._stat_crawled.get()),
             ("Failed",          self._stat_failed.get()),
             ("Skipped",         self._stat_skipped.get()),
             ("Deduplicated",    self._stat_dedup.get()),
             ("Elapsed (s)",     self._stat_elapsed.get()),
         ]
-        for i, (label, val) in enumerate(stats):
+        for i, (label, val) in enumerate(crawl_stats):
             tk.Label(grid, text=label, bg=_PALETTE["panel"],
                      fg=_PALETTE["fg_dim"], font=_FONT_LABEL, width=18,
                      anchor="w").grid(row=i, column=0, sticky="w", pady=2)
@@ -533,21 +548,68 @@ class App(tk.Tk):
                      fg=_PALETTE["fg"], font=_FONT_BOLD).grid(
                 row=i, column=1, sticky="w", padx=10)
 
-        tk.Frame(self._results_frame, bg=_PALETTE["border"],
+        # Intelligence summary
+        if self._intel_stats:
+            tk.Frame(inner, bg=_PALETTE["border"],
+                     height=1).pack(fill=tk.X, padx=20, pady=12)
+            tk.Label(
+                inner, text="Intelligence Summary",
+                bg=_PALETTE["panel"], fg=_PALETTE["accent"],
+                font=_FONT_BOLD,
+            ).pack(anchor="w", padx=20, pady=(0, 6))
+
+            intel_grid = tk.Frame(inner, bg=_PALETTE["panel"])
+            intel_grid.pack(padx=20, pady=4)
+
+            high_risk = self._intel_stats.get("high_risk", 0)
+            high_color = _PALETTE["error"] if high_risk > 0 else _PALETTE["success"]
+            intel_rows = [
+                ("Total IOCs",       str(self._intel_stats.get("total_iocs", 0)),
+                 _PALETTE["fg"]),
+                ("High / Critical",  str(high_risk), high_color),
+                ("CVEs found",       str(self._intel_stats.get("cves", 0)),
+                 _PALETTE["warning"]),
+                ("BTC addresses",    str(self._intel_stats.get("btc", 0)),
+                 _PALETTE["fg"]),
+                ("Emails",           str(self._intel_stats.get("emails", 0)),
+                 _PALETTE["fg"]),
+            ]
+            for i, (label, val, color) in enumerate(intel_rows):
+                tk.Label(intel_grid, text=label, bg=_PALETTE["panel"],
+                         fg=_PALETTE["fg_dim"], font=_FONT_LABEL, width=18,
+                         anchor="w").grid(row=i, column=0, sticky="w", pady=2)
+                tk.Label(intel_grid, text=val, bg=_PALETTE["panel"],
+                         fg=color, font=_FONT_BOLD).grid(
+                    row=i, column=1, sticky="w", padx=10)
+
+            cats = self._intel_stats.get("top_categories", [])
+            if cats:
+                tk.Label(intel_grid, text="Top categories",
+                         bg=_PALETTE["panel"], fg=_PALETTE["fg_dim"],
+                         font=_FONT_LABEL, width=18,
+                         anchor="w").grid(row=len(intel_rows), column=0,
+                                          sticky="w", pady=2)
+                tk.Label(intel_grid, text=", ".join(cats),
+                         bg=_PALETTE["panel"], fg=_PALETTE["fg"],
+                         font=_FONT_LABEL).grid(
+                    row=len(intel_rows), column=1, sticky="w", padx=10)
+
+        tk.Frame(inner, bg=_PALETTE["border"],
                  height=1).pack(fill=tk.X, padx=20, pady=12)
 
         tk.Label(
-            self._results_frame, text="Output Files",
+            inner, text="Output Files",
             bg=_PALETTE["panel"], fg=_PALETTE["fg_dim"],
             font=_FONT_BOLD,
         ).pack(anchor="w", padx=20)
 
         for fmt, path in self._result_paths.items():
-            row = tk.Frame(self._results_frame, bg=_PALETTE["panel"])
+            row = tk.Frame(inner, bg=_PALETTE["panel"])
             row.pack(fill=tk.X, padx=20, pady=3)
+            fmt_color = _PALETTE["warning"] if fmt == "html" else _PALETTE["accent"]
             tk.Label(
                 row, text=fmt.upper(), width=8,
-                bg=_PALETTE["panel"], fg=_PALETTE["accent"],
+                bg=_PALETTE["panel"], fg=fmt_color,
                 font=_FONT_BOLD, anchor="w",
             ).pack(side=tk.LEFT)
             tk.Label(
@@ -820,7 +882,48 @@ class App(tk.Tk):
             if self._stop_event.is_set():
                 logging.warning("Crawl stopped by user. Saving %d result(s).", len(results))
 
-            self._result_paths = storage.save_all(results)
+            # Intelligence extraction
+            intel_data = []
+            if results:
+                try:
+                    logging.info("Running intelligence extraction on %d page(s)…", len(results))
+                    intel_extractor = IntelligenceExtractor()
+                    intel_data = [intel_extractor.analyze(r.url, r.text) for r in results]
+                    total_iocs = sum(p.iocs.total for p in intel_data)
+                    high_risk  = sum(
+                        1 for p in intel_data
+                        if p.threat.risk_label in ("High", "Critical")
+                    )
+                    from collections import Counter
+                    cat_counter: Counter = Counter(
+                        cat for p in intel_data for cat in p.threat.categories
+                    )
+                    self._intel_stats = {
+                        "total_iocs":     total_iocs,
+                        "high_risk":      high_risk,
+                        "cves":           sum(len(p.iocs.cves) for p in intel_data),
+                        "btc":            sum(len(p.iocs.btc_addresses) for p in intel_data),
+                        "emails":         sum(len(p.iocs.emails) for p in intel_data),
+                        "top_categories": [cat for cat, _ in cat_counter.most_common(3)],
+                    }
+                    logging.info("Intelligence: %d IOC(s), %d High/Critical", total_iocs, high_risk)
+                except Exception as exc:
+                    logging.warning("Intelligence extraction failed: %s", exc)
+
+            self._result_paths = storage.save_all(results, intel_data or None)
+
+            # HTML report
+            if results:
+                try:
+                    report_gen = ReportGenerator()
+                    report_path = report_gen.generate(
+                        results, output_dir=cfg.storage.output_dir
+                    )
+                    self._result_paths["html"] = report_path
+                    logging.info("HTML report written → %s", report_path)
+                except Exception as exc:
+                    logging.warning("Could not generate HTML report: %s", exc)
+
             stats = self._active_crawler.stats
             self.after(0, lambda: self._on_crawl_complete(stats))
 

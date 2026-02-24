@@ -27,6 +27,8 @@ from . import __version__
 from .config import AppConfig, load_config
 from .crawler import Crawler
 from .extractor import PageExtractor
+from .intelligence import IntelligenceExtractor
+from .report import ReportGenerator
 from .storage import StorageManager
 from .tor_manager import TorManager
 
@@ -48,7 +50,7 @@ def _print_banner() -> None:
     print(_BANNER.format(version=__version__))
 
 
-def _print_summary(stats, paths: dict) -> None:  # type: ignore[type-arg]
+def _print_summary(stats, paths: dict, intel_stats: dict = {}) -> None:  # type: ignore[type-arg]
     sep = "=" * 60
     print(f"\n{sep}")
     print("  CRAWL COMPLETE")
@@ -59,6 +61,17 @@ def _print_summary(stats, paths: dict) -> None:  # type: ignore[type-arg]
     print(f"  Pages skipped    : {stats.pages_skipped}")
     print(f"  Duplicates       : {stats.pages_deduplicated}")
     print(f"  Elapsed time     : {stats.elapsed:.1f}s")
+    if intel_stats:
+        print(sep)
+        print("  INTELLIGENCE SUMMARY")
+        print(f"  Total IOCs       : {intel_stats.get('total_iocs', 0)}")
+        print(f"  High/Critical    : {intel_stats.get('high_risk', 0)} page(s)")
+        print(f"  CVEs found       : {intel_stats.get('cves', 0)}")
+        print(f"  BTC addresses    : {intel_stats.get('btc', 0)}")
+        print(f"  Emails           : {intel_stats.get('emails', 0)}")
+        cats = intel_stats.get("top_categories", [])
+        if cats:
+            print(f"  Top categories   : {', '.join(cats[:3])}")
     print(sep)
     if paths:
         print("  Output files:")
@@ -280,9 +293,51 @@ def main(argv: Optional[List[str]] = None) -> int:
     except KeyboardInterrupt:
         logger.warning("Interrupted by user — saving collected data…")
 
+    # ── Intelligence extraction ───────────────────────────────────────────────
+    intel_data = []
+    intel_stats: dict = {}
+    if results:
+        logger.info("Running intelligence extraction on %d page(s)…", len(results))
+        extractor_intel = IntelligenceExtractor()
+        intel_data = [extractor_intel.analyze(r.url, r.text) for r in results]
+
+        total_iocs = sum(p.iocs.total for p in intel_data)
+        high_risk  = sum(
+            1 for p in intel_data if p.threat.risk_label in ("High", "Critical")
+        )
+        from collections import Counter
+        cat_counter: Counter = Counter(
+            cat for p in intel_data for cat in p.threat.categories
+        )
+        intel_stats = {
+            "total_iocs":     total_iocs,
+            "high_risk":      high_risk,
+            "cves":           sum(len(p.iocs.cves)          for p in intel_data),
+            "btc":            sum(len(p.iocs.btc_addresses) for p in intel_data),
+            "emails":         sum(len(p.iocs.emails)        for p in intel_data),
+            "top_categories": [cat for cat, _ in cat_counter.most_common(3)],
+        }
+        logger.info(
+            "Intelligence: %d IOC(s) — %d High/Critical page(s)",
+            total_iocs, high_risk,
+        )
+
     # ── Persist results ───────────────────────────────────────────────────────
-    paths = storage.save_all(results) if results else {}
-    _print_summary(crawler.stats, paths)
+    paths = storage.save_all(results, intel_data or None) if results else {}
+
+    # ── HTML report ───────────────────────────────────────────────────────────
+    if results:
+        try:
+            report_gen = ReportGenerator()
+            report_path = report_gen.generate(
+                results, output_dir=cfg.storage.output_dir
+            )
+            paths["html"] = report_path
+            logger.info("HTML report written → %s", report_path)
+        except Exception as exc:
+            logger.warning("Could not generate HTML report: %s", exc)
+
+    _print_summary(crawler.stats, paths, intel_stats)
 
     if not results:
         logger.warning("No results collected.")
