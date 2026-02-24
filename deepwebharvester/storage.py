@@ -13,9 +13,12 @@ import logging
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
 from .crawler import CrawlResult
+
+if TYPE_CHECKING:
+    from .intelligence import PageIntelligence
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +33,7 @@ CREATE TABLE IF NOT EXISTS crawl_results (
     crawl_time    REAL,
     links_found   INTEGER,
     site          TEXT,
+    ioc_data      TEXT,
     crawled_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 CREATE INDEX IF NOT EXISTS idx_site ON crawl_results(site);
@@ -73,6 +77,12 @@ class StorageManager:
     def _init_db(self) -> None:
         with sqlite3.connect(self._db_path) as conn:
             conn.executescript(_SCHEMA)
+            # Migrate existing databases that predate the ioc_data column
+            try:
+                conn.execute("ALTER TABLE crawl_results ADD COLUMN ioc_data TEXT")
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass  # Column already exists
 
     def get_known_urls(self) -> Set[str]:
         """
@@ -87,9 +97,19 @@ class StorageManager:
             rows = conn.execute("SELECT url FROM crawl_results").fetchall()
         return {row[0] for row in rows}
 
-    def save_to_sqlite(self, results: List[CrawlResult]) -> int:
+    def save_to_sqlite(
+        self,
+        results: List[CrawlResult],
+        intel: Optional[List["PageIntelligence"]] = None,
+    ) -> int:
         """
         Persist *results* to SQLite, silently skipping duplicates.
+
+        Args:
+            results: Crawl results to save.
+            intel:   Optional parallel list of :class:`PageIntelligence`
+                     objects.  When provided, IOC data is serialised to JSON
+                     and stored in the ``ioc_data`` column.
 
         Returns:
             Number of newly inserted rows.
@@ -97,19 +117,25 @@ class StorageManager:
         if not self.sqlite_output:
             return 0
         inserted = 0
+        intel_map: Dict[str, str] = {}
+        if intel:
+            intel_map = {p.url: json.dumps(p.iocs.as_dict()) for p in intel}
+
         with sqlite3.connect(self._db_path) as conn:
             for r in results:
+                ioc_json = intel_map.get(r.url)
                 try:
                     conn.execute(
                         """
                         INSERT OR IGNORE INTO crawl_results
                             (url, title, text, content_hash, depth,
-                             crawl_time, links_found, site)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                             crawl_time, links_found, site, ioc_data)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             r.url, r.title, r.text, r.content_hash,
                             r.depth, r.crawl_time, r.links_found, r.site,
+                            ioc_json,
                         ),
                     )
                     if conn.execute("SELECT changes()").fetchone()[0]:
@@ -200,16 +226,26 @@ class StorageManager:
 
     # ── Combined ──────────────────────────────────────────────────────────────
 
-    def save_all(self, results: List[CrawlResult]) -> Dict[str, Path]:
+    def save_all(
+        self,
+        results: List[CrawlResult],
+        intel: Optional[List["PageIntelligence"]] = None,
+    ) -> Dict[str, Path]:
         """
         Save *results* in every enabled format.
+
+        Args:
+            results: Crawl results to save.
+            intel:   Optional parallel list of :class:`PageIntelligence`
+                     objects — passed to :meth:`save_to_sqlite` for IOC
+                     column persistence.
 
         Returns:
             A mapping of format name → output path.
         """
         paths: Dict[str, Path] = {}
         if self.sqlite_output:
-            self.save_to_sqlite(results)
+            self.save_to_sqlite(results, intel)
             paths["sqlite"] = self._db_path
         if self.json_output:
             paths["json"] = self.save_to_json(results)

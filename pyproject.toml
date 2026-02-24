@@ -14,6 +14,7 @@ keywords = ["osint", "tor", "darkweb", "cybersecurity", "scraper", "intelligence
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
+    "Environment :: X11 Applications",
     "Intended Audience :: Information Technology",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
@@ -50,7 +51,8 @@ dev = [
 ]
 
 [project.scripts]
-deepwebharvester = "deepwebharvester.cli:main"
+deepwebharvester     = "deepwebharvester.cli:main"
+deepwebharvester-gui = "deepwebharvester.gui:main"
 
 [project.urls]
 Homepage = "https://github.com/servais1983/deepwebharvester"
