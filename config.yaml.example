@@ -1,0 +1,58 @@
+# ── DeepWebHarvester — configuration file example ────────────────────────────
+#
+# Copy to config.yaml and adjust to your needs:
+#   cp config.yaml.example config.yaml
+#
+# IMPORTANT: Never put your Tor control password here.
+# Use the TOR_CONTROL_PASSWORD environment variable instead (see .env.example).
+
+# ── Tor settings ──────────────────────────────────────────────────────────────
+tor:
+  socks_host: "127.0.0.1"
+  socks_port: 9050
+  control_host: "127.0.0.1"
+  control_port: 9051
+  # Renew Tor circuit after every N pages crawled globally
+  renew_circuit_every: 10
+
+# ── Crawl behaviour ───────────────────────────────────────────────────────────
+crawler:
+  # Maximum link-follow depth from each seed URL (0 = seed page only)
+  max_depth: 2
+  # Maximum pages to collect per seed site
+  max_pages: 20
+  # Seconds to wait between consecutive requests (be respectful)
+  crawl_delay: 7.0
+  # HTTP request timeout in seconds
+  request_timeout: 30
+  # Retry attempts before giving up on a URL
+  retry_count: 3
+  # Exponential back-off multiplier (sleep = factor × 2^attempt seconds)
+  backoff_factor: 4.0
+  # Number of concurrent site-crawl threads (1 = serial)
+  max_workers: 3
+  # URL paths to skip entirely
+  blacklist_paths:
+    - /login
+    - /register
+    - /signup
+    - /auth
+
+# ── Output settings ───────────────────────────────────────────────────────────
+storage:
+  output_dir: "results"
+  json_output: true
+  csv_output: true
+  # SQLite also powers the --resume feature
+  sqlite_output: true
+  db_name: "deepwebharvester.db"
+
+# ── Seed URLs ─────────────────────────────────────────────────────────────────
+# Add your target .onion addresses here (valid Tor v3 = 56 base32 chars + .onion)
+seed_urls:
+  # - "http://replace_with_56_char_v3_address.onion"
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+log_level: "INFO"
+# Uncomment to also write logs to a file
+# log_file: "logs/deepwebharvester.log"

@@ -1,0 +1,48 @@
+version: "3.9"
+
+# ── Services ──────────────────────────────────────────────────────────────────
+services:
+
+  # Tor proxy — provides SOCKS5 on :9050 and control port on :9051
+  tor:
+    image: dperson/torproxy:latest
+    ports:
+      - "9050:9050"
+      - "9051:9051"
+    environment:
+      # Set a password for the Tor control port.
+      # The same value must be in TOR_CONTROL_PASSWORD below.
+      PASSWORD: "${TOR_CONTROL_PASSWORD:-changeme}"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--socks5-hostname", "localhost:9050",
+             "-s", "https://check.torproject.org/api/ip"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # DeepWebHarvester — the OSINT crawler
+  harvester:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      tor:
+        condition: service_healthy
+    environment:
+      TOR_CONTROL_PASSWORD: "${TOR_CONTROL_PASSWORD:-changeme}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+    volumes:
+      - ./results:/app/results
+      - ./logs:/app/logs
+      # Mount a config file if you have one (optional)
+      - ./config.yaml:/app/config.yaml:ro
+    command:
+      - "--config"
+      - "/app/config.yaml"
+      - "--verify-tor"
+
+# ── Volumes ───────────────────────────────────────────────────────────────────
+volumes:
+  results:
+  logs:

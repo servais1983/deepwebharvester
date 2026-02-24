@@ -1,368 +1,445 @@
 # DeepWebHarvester
 
-Is an advanced Python-based crawler designed to anonymously navigate and extract valuable intelligence from the dark web’s ".onion" sites. By leveraging Tor’s anonymity network, the tool ensures secure, privacy-respecting access while implementing robust features such as automatic retries, rate-limiting to prevent detection, and periodic Tor circuit renewal to evade tracking. Built with an ethical OSINT mindset and a hacker vibe, DeepWebHarvester systematically handles website pages, extracts relevant links, and safely saves the data in structured formats for analysis. It is an essential tool for cybersecurity professionals and researchers seeking proactive threat intelligence from the darkest corners of the internet.
- 
+> Advanced Python OSINT crawler for legitimate dark web intelligence gathering via Tor.
+
+[![CI](https://github.com/servais1983/deepwebharvester/actions/workflows/ci.yml/badge.svg)](https://github.com/servais1983/deepwebharvester/actions)
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+DeepWebHarvester anonymously navigates and extracts intelligence from `.onion` hidden services using the Tor network. Built for cybersecurity professionals and OSINT practitioners who need structured, reproducible data from the dark web.
+
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [Architecture](#architecture)
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Output Formats](#output-formats)
+- [Docker](#docker)
+- [Development](#development)
+- [Security Considerations](#security-considerations)
+- [Use Cases](#use-cases)
+- [Troubleshooting](#troubleshooting)
+- [Disclaimer](#disclaimer)
+
+---
+
+## Features
+
+| Feature | Description |
+|---|---|
+| **Anonymous Crawling** | All traffic routed via Tor SOCKS5 proxy — DNS resolved through Tor (`socks5h`) |
+| **BFS Crawl Engine** | Configurable depth and page-count limits per site |
+| **Concurrent Sites** | Thread-pool based parallel crawling of multiple seed URLs |
+| **Content Deduplication** | SHA-256 hashing prevents duplicate pages across all sites |
+| **Resume Support** | SQLite tracks crawled URLs — restart a crawl without re-visiting pages |
+| **Circuit Renewal** | Automatically requests a new Tor exit node every N pages |
+| **Retry + Backoff** | Exponential back-off retries on transient network failures |
+| **Blacklist Filtering** | Skip authentication-required paths (`/login`, `/register`, …) |
+| **Multi-format Output** | JSON, CSV, and SQLite simultaneously |
+| **Layered Config** | Defaults → YAML file → environment variables → CLI flags |
+| **Secure by Default** | Passwords via env vars only; no credentials in code or config files |
+| **Docker Ready** | Two-stage Dockerfile + docker-compose with Tor sidecar |
+
+---
+
+## Architecture
+
+```
+deepwebharvester/
+├── deepwebharvester/
+│   ├── __init__.py      # Package metadata
+│   ├── cli.py           # Argparse CLI entry point
+│   ├── config.py        # Layered configuration (defaults → YAML → env)
+│   ├── tor_manager.py   # Tor session creation & circuit renewal
+│   ├── extractor.py     # HTML parsing, URL validation, link harvesting
+│   ├── crawler.py       # BFS engine with dedup, retries, concurrency
+│   └── storage.py       # JSON / CSV / SQLite persistence
+├── tests/
+│   ├── conftest.py      # Shared fixtures (mock Tor, temp storage)
+│   ├── test_config.py
+│   ├── test_extractor.py
+│   ├── test_crawler.py
+│   ├── test_storage.py
+│   └── test_tor_manager.py
+├── .github/workflows/ci.yml   # GitHub Actions CI (multi-Python, audit)
+├── config.yaml.example
+├── .env.example
+├── Dockerfile
+├── docker-compose.yml
+├── pyproject.toml
+└── requirements.txt
+```
+
+**Data flow:**
+
+```
+CLI (cli.py)
+  └─ loads config (config.py)
+       └─ creates TorManager (tor_manager.py)
+            └─ creates Crawler (crawler.py)
+                 ├─ fetches pages via Tor session
+                 ├─ extracts content (extractor.py)
+                 └─ saves results (storage.py) → JSON + CSV + SQLite
+```
+
+---
+
+## Quick Start
+
+```bash
+# 1. Clone
+git clone https://github.com/servais1983/deepwebharvester.git
+cd deepwebharvester
+
+# 2. Install
+pip install -e .
+
+# 3. Configure secrets
+cp .env.example .env
+# Edit .env: set TOR_CONTROL_PASSWORD
 
+# 4. Start Tor
+sudo systemctl start tor
 
+# 5. Run
+deepwebharvester --url http://<56-char-v3-address>.onion/ --verify-tor
+```
 
-# key features of DeepWebHarvester tool
+---
 
-- **Anonymous Crawling via Tor**: Routes all traffic through the Tor network using the SOCKS5 proxy protocol for true anonymity on .onion sites.
-  
-- **Automated Link Discovery**: Starts from seed .onion URLs and recursively extracts valid hidden service links to expand crawling reach.
-  
-- **Robust Retry Mechanisms**: Retries failed network requests with exponential backoff, improving reliability on unstable dark web servers.
-  
-- **Rate Limiting**: Includes delays between requests to reduce the risk of IP bans and detection by dark web sites.
-  
-- **Automatic Tor Circuit Renewal**: Periodically changes the Tor identity/IP to maintain stealth and avoid being blocked.
-  
-- **Blacklist Filtering**: Skips crawling pages like login or registration that might require authentication or cause errors.
-  
-- **Data Extraction**: Parses page titles and text content safely and systematically.
-  
-- **Result Export**: Saves collected intelligence in structured JSON and CSV formats, ready for analysis or integration.
-  
-- **Ethical OSINT Focus**: Designed specifically for legal and ethical intelligence gathering with a hacker-inspired approach.
+## Installation
 
+### Requirements
 
-# Importance in Cybersecurity and OSINT
+- Python 3.9+
+- Tor service (with control port enabled)
+- Linux (tested on Kali, Ubuntu, Debian)
 
-The DeepWebHarvester serves as a specialized tool for navigating and indexing hidden services on encrypted networks like Tor. Unlike conventional web crawlers, this tools delve into non-indexed, anonymous web spaces to extract valuable security-related data. Its importance spans several domains:
+### From source
 
+```bash
+git clone https://github.com/servais1983/deepwebharvester.git
+cd deepwebharvester
 
-- **Threat Intelligence**: Organizations employ dark web crawlers to monitor emerging cyber threats, such as stolen credentials, leaked databases, malware discussions, and planned attacks circulating on dark web marketplaces and forums. Early detection enables faster incident response and risk mitigation.
-  
-- **Data Breach Detection**: Cybersecurity teams can identify when company data or customer information is sold or distributed in hidden channels, helping limit damage and notifying affected parties promptly.
-  
-- **Law Enforcement & Investigations**: These tools facilitate investigations by tracing illegal activities, uncovering criminal networks, and gathering intelligence from covert sources inaccessible via surface web.
-  
-- **Corporate Security**: Businesses use dark web data to assess vulnerabilities, monitor for brand abuse, and detect phishing campaigns specific to their organizations.
-  
-- **Academic Research & OSINT**: Researchers analyze dark web trends, criminal behaviors, and underground technological advancements for comprehensive threat landscapes.
-  
-- **Proactive Defense**: By aggregating dark web data continuously, organizations build enriched threat intelligence databases, enhancing predictive analytics and improving security postures against evolving risks.
+# Create and activate a virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
 
-  
-**In essence, DeepWebHarvester empower cybersecurity professionals and OSINT practitioners with actionable insights from the most obscure and high-risk areas of the internet, offering a critical advantage in an increasingly hostile cyber environment**.
+# Install runtime dependencies
+pip install -e .
 
+# Or with development tools
+pip install -e ".[dev]"
+```
 
-- - - 
+### Install Tor
 
-**Below is a simple, step-by-step guide to set up and use the robust Python darkweb scraper tool on Kali Linux, covering everything from saving the script, installing dependencies, configuring Tor, to running the scraper**.
+```bash
+sudo apt update && sudo apt install -y tor
+```
 
+### Configure the Tor control port
 
-# 1. Save the Script ( Manual Installation )
+```bash
+# Generate a hashed password
+tor --hash-password YourStrongPassword123
+# → 16:ABCDEF1234...
 
-- **Open a terminal**.
-  
-Use nano (or your preferred text editor) to create the Python script file:
+# Edit /etc/tor/torrc — add or uncomment:
+sudo nano /etc/tor/torrc
+```
 
-    nano deepwebharvester.py
+```
+ControlPort 9051
+HashedControlPassword 16:ABCDEF1234...
+```
 
-- Follow the link below to copy the tool script and paste it into nano:
-  
-https://gist.github.com/techenthusiast167/76ef6f0e1e3af74045f4d85bc1a7c60e
-  
-- **Save and exit nano**:
-  
-- Press **Ctrl+O**, hit Enter to save.
-- Press **Ctrl+X** to exit nano.
+```bash
+sudo systemctl restart tor
+sudo systemctl status tor   # should show "active (running)"
+```
 
+---
 
-- - - 
+## Configuration
 
+DeepWebHarvester uses a **layered configuration system** (highest priority wins):
 
-# 2. Install Required Dependencies
+```
+CLI flags > environment variables > config.yaml > built-in defaults
+```
 
-- **Make sure your system is updated**:
+### Environment variables (`.env`)
 
-      sudo apt update
-      sudo apt upgrade -y
+```bash
+cp .env.example .env
+```
 
+```ini
+# .env
+TOR_CONTROL_PASSWORD=YourStrongPassword123
+# TOR_SOCKS_PORT=9050
+# TOR_CONTROL_PORT=9051
+# LOG_LEVEL=INFO
+# OUTPUT_DIR=results
+```
 
-- **Install Python3 and pip if not already installed**:
+> **Security:** Never hard-code credentials. Always use env vars or a secrets manager.
 
-      sudo apt install -y python3 python3-pip
+### YAML config file
 
+```bash
+cp config.yaml.example config.yaml
+```
 
-- **Create and activate a Python virtual environment to avoid conflicts**:
+Key settings:
 
-      virtualenv my_temp_venv
-      source my_temp_venv/bin/activate
+```yaml
+tor:
+  renew_circuit_every: 10   # new exit node after N pages
 
+crawler:
+  max_depth: 2              # 0 = seed page only
+  max_pages: 20             # per-site limit
+  crawl_delay: 7.0          # seconds between requests
+  max_workers: 3            # concurrent sites
+  blacklist_paths:
+    - /login
+    - /register
 
-- **Install the necessary Python packages**:
-  
-      pip install requests pysocks stem beautifulsoup4 lxml
+storage:
+  output_dir: results
+  sqlite_output: true       # also enables --resume
 
+seed_urls:
+  - "http://your56charv3addresshere.onion"
+```
 
-- - - 
+---
 
+## Usage
 
-# 3. Install and Configure Tor
+### CLI reference
 
-- **Install the Tor service if you haven't**:
+```
+usage: deepwebharvester [-h] [--version] [--config PATH] [--url ONION_URL]
+                        [--depth N] [--pages N] [--workers N] [--delay SECS]
+                        [--output DIR] [--no-json] [--no-csv] [--no-sqlite]
+                        [--log-level {DEBUG,INFO,WARNING,ERROR}]
+                        [--verify-tor] [--resume]
+```
 
-      sudo apt install -y tor
+### Common examples
 
+```bash
+# Basic crawl of a single site
+deepwebharvester --url http://<hash>.onion/
 
-- **Enable Tor ControlPort in Tor's config so your script can renew identity**:
-  
-- **Generate a hashed control password (replace YourStrongPassword123 with a secure password)**:
+# Use a config file with multiple seeds
+deepwebharvester --config config.yaml
 
-      tor --hash-password YourStrongPassword123
+# Verify Tor, limit to 1 depth level, 5 pages
+deepwebharvester --url http://<hash>.onion/ --verify-tor --depth 1 --pages 5
 
+# Resume a previous crawl (skip already-seen URLs)
+deepwebharvester --config config.yaml --resume
 
-- **The output will be something like**:
-  
-      16:AB12CD34EF56...
+# High verbosity, JSON only, custom output folder
+deepwebharvester --config config.yaml \
+  --log-level DEBUG --no-csv --no-sqlite --output /tmp/hunt
 
+# Multiple seed URLs from the command line
+deepwebharvester \
+  --url http://<hash1>.onion/ \
+  --url http://<hash2>.onion/ \
+  --workers 2
+```
 
-- **Edit Tor config file**:
-  
-      sudo nano /etc/tor/torrc
+---
 
+## Output Formats
 
-- **Add or uncomment these lines, replacing with your hashed password**:
+Results are written to the `results/` directory (configurable via `--output`).
 
-      ControlPort 9051
-      HashedControlPassword 16:AB12CD34EF56...
+### JSON (`results_YYYYMMDD_HHMMSS.json`)
 
+```json
+[
+  {
+    "url": "http://<hash>.onion/page",
+    "site": "http://<hash>.onion",
+    "title": "Page Title",
+    "depth": 0,
+    "crawl_time_s": 4.21,
+    "links_found": 12,
+    "content_hash": "sha256...",
+    "text": "Visible page text..."
+  }
+]
+```
 
-- **Save and exit (Ctrl+O, Enter, Ctrl+X)**.
+### CSV (`results_YYYYMMDD_HHMMSS.csv`)
 
-  
-- **Restart the Tor service**:
-  
-      sudo systemctl restart tor
+Columns: `URL, Site, Title, Depth, CrawlTime(s), LinksFound, ContentHash, Text`
 
+### SQLite (`deepwebharvester.db`)
 
-- **Confirm Tor is running**:
-  
-      systemctl status tor@default.service
+```sql
+SELECT url, title, site, depth, crawled_at
+FROM crawl_results
+WHERE site = 'http://<hash>.onion'
+ORDER BY crawled_at DESC;
+```
 
+The SQLite database powers `--resume` mode: re-running with `--resume` skips
+any URL already in the `crawl_results` table.
 
-*You should see Active: active (running) status*.
+---
 
-**Or list all instance services**:
+## Docker
 
-    systemctl list-units | grep tor@
+### Build and run with docker-compose
 
-- If Tor is running, these should show active (running) with a valid main PID.
-- - - 
+```bash
+# Set your Tor control password
+export TOR_CONTROL_PASSWORD=YourStrongPassword123
 
+# Build and start (Tor sidecar + harvester)
+docker compose up --build
 
-# 4. Update the Python Script Settings
+# Results appear in ./results/
+```
 
-- **Open the script for editing if needed**:
+### Run standalone container against an existing Tor service
 
-      nano deepwebHarvester.py
+```bash
+docker build -t deepwebharvester .
 
+docker run --rm \
+  -e TOR_CONTROL_PASSWORD=YourStrongPassword123 \
+  -v "$(pwd)/results:/app/results" \
+  -v "$(pwd)/config.yaml:/app/config.yaml:ro" \
+  deepwebharvester --config /app/config.yaml --verify-tor
+```
 
-- Replace the placeholder TOR_CONTROL_PASSWORD = **"your_password_here"** with your plain text ControlPort password you set earlier, e.g.,
-  
-**TOR_CONTROL_PASSWORD = "YourStrongPassword123"**
+---
 
+## Development
 
-- Add your target **.onion URLs** inside the **onion_start_urls** list in the script.
-  
-- **Save and exit**.
+### Set up dev environment
 
+```bash
+pip install -e ".[dev]"
+```
 
-- - - 
+### Run tests
 
+```bash
+pytest                          # all tests with coverage
+pytest tests/test_extractor.py  # single module
+pytest -k "test_valid"          # run tests matching a pattern
+```
 
-# 5. Run the Scraper
+### Code quality
 
-- **With Tor service running and the script ready**:
+```bash
+black deepwebharvester tests        # format
+isort deepwebharvester tests        # sort imports
+flake8 deepwebharvester tests       # lint
+mypy deepwebharvester               # type check
+```
 
-      python3 deepwebharvester.py
+### Project conventions
 
+- **Formatter:** [black](https://black.readthedocs.io/) (line length 100)
+- **Import order:** [isort](https://pycqa.github.io/isort/) with `profile = "black"`
+- **Type hints:** enforced via [mypy](https://mypy-lang.org/) in strict mode
+- **Test coverage target:** ≥ 80 % (`fail_under = 80` in `pyproject.toml`)
 
-- *You will see logs showing crawling progress, retries if any failures occur, and when scraping completes*.
+---
 
+## Security Considerations
 
-- - - 
+| Concern | Mitigation |
+|---|---|
+| Credential leakage | Tor password via env var only; never stored in code or YAML |
+| Traffic anonymity | `socks5h` DNS-over-Tor prevents DNS leaks |
+| Detection | Configurable `crawl_delay` + periodic circuit renewal |
+| Duplicate work | Content hashing deduplicates across sessions |
+| Non-root execution | Docker image runs as an unprivileged `harvester` user |
+| Dependency safety | CI runs `pip-audit` on every push |
 
-# 6. Check Results
+---
 
-The scraper saves results to:
+## Use Cases
 
-    JSON & CSV 
+- **Threat Intelligence** — monitor dark web forums for emerging attack techniques,
+  leaked credentials, or planned campaigns against your organisation.
+- **Data Breach Detection** — identify when company data or customer PII appears
+  on dark web marketplaces.
+- **Law Enforcement** — support investigations by systematically indexing
+  hidden service content.
+- **Corporate Security** — detect brand abuse, phishing kits, or counterfeits
+  distributed through hidden channels.
+- **Academic Research** — study dark web ecosystem trends, service lifecycles,
+  and underground market dynamics.
+- **Proactive Defence** — enrich threat intelligence feeds with dark web
+  indicators of compromise (IoCs).
 
-To see the data scraped and save in JSON and CSV, you can use the command **open**. For example:
+---
 
-    open deepwebharvester_results.json
+## Troubleshooting
 
-- This will open up the content of the data scraped and saved in json for you - same procedure with CSV.
+### Tor is not running
 
-- - - 
+```bash
+sudo systemctl status tor
+# If active (exited) rather than active (running):
+sudo systemctl restart tor
+ss -aln | grep 9050          # SOCKS port should be listening
+```
 
-# Notes:
+### Verify Tor connection manually
 
-- The script automatically routes all requests through Tor's SOCKS5 proxy at 127.0.0.1:9050.
+```bash
+curl --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip
+# Should return: {"IsTor":true, "IP":"..."}
+```
 
-- It renews Tor circuits periodically for anonymity.
-  
-- It respects delays between requests to avoid hammering hidden services.
-  
-- Use Tor Browser for browsing .onion sites manually; no need to configure Firefox unless you want to proxy Firefox traffic through Tor.
-  
-- Keep system time accurate (sudo timedatectl set-ntp true) for Tor to work correctly.
+### Circuit renewal fails
 
+Check that `ControlPort` and `HashedControlPassword` are set in `/etc/tor/torrc`
+and that the plain-text password in `TOR_CONTROL_PASSWORD` matches the hash.
 
+```bash
+journalctl -xeu tor          # inspect Tor service logs
+```
 
-- - - 
-- - - 
+### Slow crawling
 
-# Additional Help (1)
+`.onion` sites are inherently slower than the clear web. The default 7-second
+`crawl_delay` is intentional. Reduce `max_pages` for faster exploratory runs
+or increase `max_workers` to crawl multiple sites in parallel.
 
+---
 
-**You can check if Tor is activated and running on your system by using the following commands in the terminal**:
+## Disclaimer
 
+> This tool is intended **exclusively** for legitimate cybersecurity research,
+> OSINT, and authorised investigations. Unauthorised access to computer systems,
+> harassment, or any illegal activity using this tool is strictly prohibited and
+> may be punishable under applicable national and international laws.
+>
+> The author accepts **no responsibility** for any misuse of this software.
+> Users must obtain proper authorisation before targeting any system or service
+> and must comply with all relevant legal and ethical standards.
 
-1. **Check Tor service status**:
-   
-- Run this command to see if the Tor service is active and running:
+---
 
-       sudo systemctl status tor
-
-- **Look for the line that says**:
-
-      Active: active (running)
-
-*If you see this, Tor is running correctly*.
-
-
-# 2. Check if Tor is listening on the default SOCKS port (9050):
-
- 
-    ss -aln | grep 9050
-
-
-*If you see output showing a listening socket on port 9050, this means Tor is ready to accept proxy connections*.
-
-
-
-# 3. Test Tor connectivity with curl:
-
-You can test if requests are going through Tor by using curl with the Tor SOCKS proxy:
-
-    curl --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/
-
-
-*If successful, this will return a webpage message indicating you are using Tor — output page will say*: 
-
-“Congratulations. This browser is configured to use Tor.”
-
-
-# 4. If Tor is not running, start it:
-
-    sudo systemctl start tor
-
-
-# 5. If problems occur, check detailed logs:
-
-    journalctl -xeu tor
-
-
-
-# Summary:
-
-**To confirm Tor is running properly**:
-
-- **sudo systemctl status tor** → should show active (running)
-  
-- **ss -aln | grep 9050** → port 9050 listening
-  
-- **Curl test** → confirms Tor network is used
-  
-- If it's not running, you can start it with:
-  
-- **sudo systemctl start tor**
-
-
-
-- - -
-
-
-# Additionally HELP (2)
-
-
-**If your Tor service status shows**:
-
-
-*Active: active (exited) since date; minute > ago
-...
-Main PID: 1111651 (code=exited, status=0/SUCCESS)
-...
-Finished tor.service - Anonymizing overlay network for TCP (multi-instance-master)*.
-
-
-# This means:
-
-- The tor service unit is not running the Tor daemon actively.
-
-- Instead, it started and immediately exited successfully because the service's ExecStart is likely set to /bin/true or a similar no-op command.
-  
-- So despite the "active (exited)" state, Tor is effectively not running as a persistent background process.
-
-
-
-**For Tor to be properly active, the service’s ExecStart must run the actual Tor binary (e.g., /usr/bin/tor -f /etc/tor/torrc), and the status should be Active: active (running)**.
-
-
-# What to do next:
-
-1. Check your **Tor systemd service file** with:
-  
-         systemctl cat tor.service
-
-
-
-2. If you see **/bin/true as the ExecStart command**, you must fix or replace it.
-
-
-3. To fix it, you can:
-
-- Reinstall Tor (which may restore the correct service file):
-
-      sudo apt purge tor
-      sudo apt install tor
-
-
-4. Reload systemd and restart tor:
-
-       sudo systemctl daemon-reload
-       sudo systemctl enable tor
-       sudo systemctl start tor
-       sudo systemctl status tor
-
-
-*After this, you should see Tor running properly*.
-
-
-# Summary
-
-- Tor is properly running when systemctl status tor shows active (running) (not active (exited)).
-  
-- Tor listens on port 9050 for SOCKS5 proxy.
-  
-- Curl test confirms Tor connection.
-Log checks help identify startup or runtime issues.
-
-- - - 
-
-
-
-# Disclaimer
-
-This tool is intended for legitimate cybersecurity and Open Source Intelligence (OSINT) purposes only. Unauthorized or illegal usage to access or disrupt dark web content is prohibited and may be punishable under applicable laws. Users must comply with all legal and ethical standards when deploying this tool. The creators shall not be held responsible for any misuse.
-
-
-- If you need additional help, have questions, or want to collaborate, please don’t hesitate to reach out to me via my LinkedIn:
-
-http://linkedin.com/in/tech-enthusiast-669279263
-
-**Creator: Tech Enthusiast**
+**Creator:** Tech Enthusiast · [LinkedIn](http://linkedin.com/in/tech-enthusiast-669279263)
