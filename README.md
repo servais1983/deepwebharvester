@@ -1,13 +1,20 @@
 # DeepWebHarvester
 
-> Advanced Python OSINT crawler for legitimate dark web intelligence gathering via Tor.
+**Advanced Python OSINT intelligence platform for dark web analysis via Tor.**
 
 [![CI](https://github.com/servais1983/deepwebharvester/actions/workflows/ci.yml/badge.svg)](https://github.com/servais1983/deepwebharvester/actions)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Coverage](https://img.shields.io/badge/coverage-91%25-brightgreen)](htmlcov/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-DeepWebHarvester anonymously navigates and extracts intelligence from `.onion` hidden services using the Tor network. Built for cybersecurity professionals and OSINT practitioners who need structured, reproducible data from the dark web.
+---
+
+## Overview
+
+DeepWebHarvester is a production-grade cybersecurity intelligence platform that anonymously crawls, parses, and stores structured data from Tor hidden services. It provides both a full graphical desktop interface and a headless command-line interface, making it suitable for threat analysts who need an accessible tool as well as for automated pipelines and scheduled intelligence gathering workflows.
+
+The platform routes all network traffic through the Tor SOCKS5 proxy, performs BFS-based crawling with configurable depth and page limits, deduplicates results globally using SHA-256 content hashing, and persists findings simultaneously to JSON, CSV, and SQLite. A built-in resume mechanism allows interrupted sessions to continue exactly where they left off.
 
 ---
 
@@ -15,14 +22,14 @@ DeepWebHarvester anonymously navigates and extracts intelligence from `.onion` h
 
 - [Features](#features)
 - [Architecture](#architecture)
-- [Quick Start](#quick-start)
+- [Graphical Interface](#graphical-interface)
 - [Installation](#installation)
 - [Configuration](#configuration)
-- [Usage](#usage)
+- [Command-Line Usage](#command-line-usage)
 - [Output Formats](#output-formats)
-- [Docker](#docker)
+- [Docker Deployment](#docker-deployment)
 - [Development](#development)
-- [Security Considerations](#security-considerations)
+- [Security Model](#security-model)
 - [Use Cases](#use-cases)
 - [Troubleshooting](#troubleshooting)
 - [Disclaimer](#disclaimer)
@@ -31,20 +38,36 @@ DeepWebHarvester anonymously navigates and extracts intelligence from `.onion` h
 
 ## Features
 
-| Feature | Description |
-|---|---|
-| **Anonymous Crawling** | All traffic routed via Tor SOCKS5 proxy — DNS resolved through Tor (`socks5h`) |
-| **BFS Crawl Engine** | Configurable depth and page-count limits per site |
-| **Concurrent Sites** | Thread-pool based parallel crawling of multiple seed URLs |
-| **Content Deduplication** | SHA-256 hashing prevents duplicate pages across all sites |
-| **Resume Support** | SQLite tracks crawled URLs — restart a crawl without re-visiting pages |
-| **Circuit Renewal** | Automatically requests a new Tor exit node every N pages |
-| **Retry + Backoff** | Exponential back-off retries on transient network failures |
-| **Blacklist Filtering** | Skip authentication-required paths (`/login`, `/register`, …) |
-| **Multi-format Output** | JSON, CSV, and SQLite simultaneously |
-| **Layered Config** | Defaults → YAML file → environment variables → CLI flags |
-| **Secure by Default** | Passwords via env vars only; no credentials in code or config files |
-| **Docker Ready** | Two-stage Dockerfile + docker-compose with Tor sidecar |
+### Core engine
+
+- **Anonymous crawling** — All traffic routed via `socks5h` (DNS resolution through Tor, preventing leaks)
+- **BFS crawl engine** — Configurable depth and per-site page limits; queue-based, memory-efficient
+- **Global content deduplication** — SHA-256 hashing prevents re-storing identical pages across all seeds
+- **Concurrent multi-site crawling** — Thread-pool based parallelism; multiple .onion sites crawled simultaneously
+- **Tor circuit renewal** — Automatic identity rotation every N pages for operational security
+- **Exponential back-off retries** — Graceful handling of unstable .onion servers
+- **Blacklist filtering** — Configurable path exclusions (login pages, registration forms)
+- **Resume support** — SQLite persistence tracks crawled URLs; restart without re-visiting known pages
+
+### Interfaces
+
+- **Desktop GUI** — Full graphical interface built with Tkinter: real-time log stream, progress tracking, settings panel, and one-click result export
+- **CLI** — Feature-complete command-line interface with layered config override
+
+### Data management
+
+- **Multi-format output** — JSON, CSV, and SQLite written simultaneously
+- **SQLite query support** — Results are immediately queryable for ad-hoc analysis
+- **Timestamped exports** — Each run produces uniquely named output files
+
+### Engineering quality
+
+- **Layered configuration** — Defaults → YAML file → environment variables → CLI/GUI flags
+- **Secrets via environment** — Tor control password never stored in code or config files
+- **126 automated tests** — 91% code coverage across all modules
+- **GitHub Actions CI** — Multi-Python matrix (3.9–3.12) plus dependency security audit
+- **Two-stage Docker build** — Minimal runtime image, non-root execution
+- **Type-annotated codebase** — Full type hints enforced by mypy in strict mode
 
 ---
 
@@ -52,108 +75,105 @@ DeepWebHarvester anonymously navigates and extracts intelligence from `.onion` h
 
 ```
 deepwebharvester/
-├── deepwebharvester/
-│   ├── __init__.py      # Package metadata
-│   ├── cli.py           # Argparse CLI entry point
-│   ├── config.py        # Layered configuration (defaults → YAML → env)
-│   ├── tor_manager.py   # Tor session creation & circuit renewal
-│   ├── extractor.py     # HTML parsing, URL validation, link harvesting
-│   ├── crawler.py       # BFS engine with dedup, retries, concurrency
-│   └── storage.py       # JSON / CSV / SQLite persistence
-├── tests/
-│   ├── conftest.py      # Shared fixtures (mock Tor, temp storage)
-│   ├── test_config.py
-│   ├── test_extractor.py
-│   ├── test_crawler.py
-│   ├── test_storage.py
-│   └── test_tor_manager.py
-├── .github/workflows/ci.yml   # GitHub Actions CI (multi-Python, audit)
-├── config.yaml.example
-├── .env.example
-├── Dockerfile
-├── docker-compose.yml
-├── pyproject.toml
-└── requirements.txt
+  __init__.py       Package metadata and version
+  cli.py            Argparse CLI entry point
+  gui.py            Tkinter desktop GUI
+  config.py         Layered configuration loader (defaults, YAML, env)
+  tor_manager.py    Tor session factory and circuit renewal
+  extractor.py      HTML parser, URL validator, link harvester
+  crawler.py        BFS engine with dedup, retries, concurrency, stats
+  storage.py        JSON / CSV / SQLite persistence
+
+tests/
+  conftest.py       Shared fixtures (mock Tor, temp storage)
+  test_cli.py
+  test_config.py
+  test_crawler.py
+  test_extractor.py
+  test_storage.py
+  test_tor_manager.py
+
+.github/workflows/
+  ci.yml            GitHub Actions CI pipeline
+
+Dockerfile          Two-stage build (builder + slim runtime)
+docker-compose.yml  Tor sidecar + harvester service
+pyproject.toml      Build config, linters, test runner, coverage
 ```
 
 **Data flow:**
 
 ```
-CLI (cli.py)
-  └─ loads config (config.py)
-       └─ creates TorManager (tor_manager.py)
-            └─ creates Crawler (crawler.py)
-                 ├─ fetches pages via Tor session
-                 ├─ extracts content (extractor.py)
-                 └─ saves results (storage.py) → JSON + CSV + SQLite
+User (GUI or CLI)
+  -> config.py          Load layered configuration
+  -> tor_manager.py     Create Tor-proxied requests session
+  -> crawler.py         BFS crawl loop
+       -> extractor.py  Fetch, parse, extract links, hash content
+       -> storage.py    Persist results (JSON + CSV + SQLite)
 ```
 
 ---
 
-## Quick Start
+## Graphical Interface
+
+DeepWebHarvester ships a full desktop GUI accessible via:
 
 ```bash
-# 1. Clone
-git clone https://github.com/servais1983/deepwebharvester.git
-cd deepwebharvester
-
-# 2. Install
-pip install -e .
-
-# 3. Configure secrets
-cp .env.example .env
-# Edit .env: set TOR_CONTROL_PASSWORD
-
-# 4. Start Tor
-sudo systemctl start tor
-
-# 5. Run
-deepwebharvester --url http://<56-char-v3-address>.onion/ --verify-tor
+deepwebharvester-gui
 ```
+
+The interface is divided into four panels:
+
+**Settings panel** — Configure seed URLs, crawl depth, page limit, concurrent workers, request delay, output directory, and Tor control password. All settings are validated before the crawl starts.
+
+**Control bar** — Start, pause, and stop controls with a real-time progress indicator showing pages crawled, pages failed, and elapsed time.
+
+**Live log stream** — Colour-coded, scrollable log output with DEBUG/INFO/WARNING/ERROR levels displayed in real time as the crawl progresses, without blocking the UI.
+
+**Results summary** — On completion, shows aggregate statistics and the paths to all output files. Includes quick-open buttons for JSON, CSV, and SQLite results.
+
+The GUI respects all the same configuration layering as the CLI: it pre-populates from `config.yaml` and `.env` if present, and writes back a session config when a crawl is started.
 
 ---
 
 ## Installation
 
-### Requirements
+### System requirements
 
-- Python 3.9+
-- Tor service (with control port enabled)
-- Linux (tested on Kali, Ubuntu, Debian)
+- Python 3.9 or later
+- Tor service with control port enabled (see below)
+- Linux (tested on Kali Linux, Ubuntu 22.04, Debian 12)
 
-### From source
+### Install from source
 
 ```bash
 git clone https://github.com/servais1983/deepwebharvester.git
 cd deepwebharvester
 
-# Create and activate a virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
 
-# Install runtime dependencies
+# Runtime only
 pip install -e .
 
-# Or with development tools
+# Runtime + development tools
 pip install -e ".[dev]"
 ```
 
-### Install Tor
+### Install and configure Tor
 
 ```bash
 sudo apt update && sudo apt install -y tor
-```
 
-### Configure the Tor control port
-
-```bash
-# Generate a hashed password
+# Generate a hashed password for the control port
 tor --hash-password YourStrongPassword123
-# → 16:ABCDEF1234...
+# Output: 16:ABCDEF1234...
 
-# Edit /etc/tor/torrc — add or uncomment:
+# Edit /etc/tor/torrc
 sudo nano /etc/tor/torrc
 ```
+
+Add or uncomment:
 
 ```
 ControlPort 9051
@@ -162,37 +182,39 @@ HashedControlPassword 16:ABCDEF1234...
 
 ```bash
 sudo systemctl restart tor
-sudo systemctl status tor   # should show "active (running)"
+sudo systemctl status tor   # should display: active (running)
 ```
 
 ---
 
 ## Configuration
 
-DeepWebHarvester uses a **layered configuration system** (highest priority wins):
+Configuration is resolved in the following priority order (highest wins):
 
 ```
-CLI flags > environment variables > config.yaml > built-in defaults
+GUI / CLI flags  >  Environment variables  >  config.yaml  >  Built-in defaults
 ```
 
-### Environment variables (`.env`)
+### Environment variables
 
 ```bash
 cp .env.example .env
 ```
 
 ```ini
-# .env
+# .env — never commit this file
 TOR_CONTROL_PASSWORD=YourStrongPassword123
+
+# Optional overrides
 # TOR_SOCKS_PORT=9050
 # TOR_CONTROL_PORT=9051
 # LOG_LEVEL=INFO
 # OUTPUT_DIR=results
 ```
 
-> **Security:** Never hard-code credentials. Always use env vars or a secrets manager.
+Credentials must always be provided via environment variables. The YAML configuration file must never contain passwords.
 
-### YAML config file
+### YAML configuration file
 
 ```bash
 cp config.yaml.example config.yaml
@@ -202,30 +224,33 @@ Key settings:
 
 ```yaml
 tor:
-  renew_circuit_every: 10   # new exit node after N pages
+  renew_circuit_every: 10     # rotate exit node after N pages
 
 crawler:
-  max_depth: 2              # 0 = seed page only
-  max_pages: 20             # per-site limit
-  crawl_delay: 7.0          # seconds between requests
-  max_workers: 3            # concurrent sites
+  max_depth: 2                # 0 = seed page only
+  max_pages: 20               # per-site ceiling
+  crawl_delay: 7.0            # seconds between requests
+  max_workers: 3              # concurrent site threads
   blacklist_paths:
     - /login
     - /register
+    - /signup
+    - /auth
 
 storage:
   output_dir: results
-  sqlite_output: true       # also enables --resume
+  sqlite_output: true         # required for --resume
 
 seed_urls:
   - "http://your56charv3addresshere.onion"
+
+log_level: INFO
+log_file: logs/deepwebharvester.log
 ```
 
 ---
 
-## Usage
-
-### CLI reference
+## Command-Line Usage
 
 ```
 usage: deepwebharvester [-h] [--version] [--config PATH] [--url ONION_URL]
@@ -235,39 +260,42 @@ usage: deepwebharvester [-h] [--version] [--config PATH] [--url ONION_URL]
                         [--verify-tor] [--resume]
 ```
 
-### Common examples
+### Examples
 
 ```bash
-# Basic crawl of a single site
-deepwebharvester --url http://<hash>.onion/
+# Crawl a single site
+deepwebharvester --url http://<56-char-hash>.onion/
 
 # Use a config file with multiple seeds
 deepwebharvester --config config.yaml
 
-# Verify Tor, limit to 1 depth level, 5 pages
+# Verify Tor routing before crawling, limit scope
 deepwebharvester --url http://<hash>.onion/ --verify-tor --depth 1 --pages 5
 
-# Resume a previous crawl (skip already-seen URLs)
+# Resume a previous session
 deepwebharvester --config config.yaml --resume
 
-# High verbosity, JSON only, custom output folder
+# JSON output only, custom directory, debug logging
 deepwebharvester --config config.yaml \
-  --log-level DEBUG --no-csv --no-sqlite --output /tmp/hunt
+  --no-csv --no-sqlite --output /tmp/intel --log-level DEBUG
 
-# Multiple seed URLs from the command line
+# Multiple seed URLs
 deepwebharvester \
   --url http://<hash1>.onion/ \
   --url http://<hash2>.onion/ \
   --workers 2
+
+# Launch the graphical interface
+deepwebharvester-gui
 ```
 
 ---
 
 ## Output Formats
 
-Results are written to the `results/` directory (configurable via `--output`).
+All output files are written to the configured `output_dir` (default: `results/`).
 
-### JSON (`results_YYYYMMDD_HHMMSS.json`)
+### JSON
 
 ```json
 [
@@ -278,45 +306,48 @@ Results are written to the `results/` directory (configurable via `--output`).
     "depth": 0,
     "crawl_time_s": 4.21,
     "links_found": 12,
-    "content_hash": "sha256...",
-    "text": "Visible page text..."
+    "content_hash": "sha256hex...",
+    "text": "Visible body text..."
   }
 ]
 ```
 
-### CSV (`results_YYYYMMDD_HHMMSS.csv`)
+### CSV
 
 Columns: `URL, Site, Title, Depth, CrawlTime(s), LinksFound, ContentHash, Text`
 
-### SQLite (`deepwebharvester.db`)
+### SQLite
 
 ```sql
-SELECT url, title, site, depth, crawled_at
+-- List all pages from a specific site
+SELECT url, title, depth, crawled_at
 FROM crawl_results
 WHERE site = 'http://<hash>.onion'
 ORDER BY crawled_at DESC;
+
+-- Count unique sites
+SELECT site, COUNT(*) AS pages
+FROM crawl_results
+GROUP BY site;
 ```
 
-The SQLite database powers `--resume` mode: re-running with `--resume` skips
-any URL already in the `crawl_results` table.
+The SQLite database also serves as the source of truth for `--resume` mode. Any URL already present in `crawl_results` is skipped on subsequent runs.
 
 ---
 
-## Docker
+## Docker Deployment
 
-### Build and run with docker-compose
+### Using docker-compose (recommended)
 
 ```bash
-# Set your Tor control password
 export TOR_CONTROL_PASSWORD=YourStrongPassword123
 
-# Build and start (Tor sidecar + harvester)
 docker compose up --build
-
-# Results appear in ./results/
 ```
 
-### Run standalone container against an existing Tor service
+Results appear in `./results/`. The compose file starts a Tor proxy sidecar and waits for it to pass a health check before launching the harvester.
+
+### Standalone container
 
 ```bash
 docker build -t deepwebharvester .
@@ -332,65 +363,68 @@ docker run --rm \
 
 ## Development
 
-### Set up dev environment
+### Setup
 
 ```bash
 pip install -e ".[dev]"
 ```
 
-### Run tests
+### Running tests
 
 ```bash
-pytest                          # all tests with coverage
-pytest tests/test_extractor.py  # single module
-pytest -k "test_valid"          # run tests matching a pattern
+pytest                             # full suite with coverage
+pytest tests/test_extractor.py     # single module
+pytest -k "dedup"                  # match by name pattern
+pytest -v --no-cov                 # verbose, no coverage overhead
 ```
 
-### Code quality
+### Code quality tools
 
 ```bash
-black deepwebharvester tests        # format
-isort deepwebharvester tests        # sort imports
-flake8 deepwebharvester tests       # lint
-mypy deepwebharvester               # type check
+black deepwebharvester tests       # format
+isort deepwebharvester tests       # sort imports
+flake8 deepwebharvester tests      # lint
+mypy deepwebharvester              # type check
 ```
 
-### Project conventions
+### Conventions
 
-- **Formatter:** [black](https://black.readthedocs.io/) (line length 100)
-- **Import order:** [isort](https://pycqa.github.io/isort/) with `profile = "black"`
-- **Type hints:** enforced via [mypy](https://mypy-lang.org/) in strict mode
-- **Test coverage target:** ≥ 80 % (`fail_under = 80` in `pyproject.toml`)
+| Tool | Config |
+|---|---|
+| Formatter | black, line length 100 |
+| Import order | isort, profile = black |
+| Type checker | mypy strict mode |
+| Test runner | pytest |
+| Coverage target | >= 80% (`fail_under = 80`) |
 
 ---
 
-## Security Considerations
+## Security Model
 
-| Concern | Mitigation |
+| Concern | Control |
 |---|---|
-| Credential leakage | Tor password via env var only; never stored in code or YAML |
-| Traffic anonymity | `socks5h` DNS-over-Tor prevents DNS leaks |
-| Detection | Configurable `crawl_delay` + periodic circuit renewal |
-| Duplicate work | Content hashing deduplicates across sessions |
-| Non-root execution | Docker image runs as an unprivileged `harvester` user |
-| Dependency safety | CI runs `pip-audit` on every push |
+| Credential exposure | Tor password via environment variable only; never in config files or code |
+| DNS leaks | `socks5h` scheme resolves DNS through Tor |
+| Traffic correlation | Configurable crawl delay and periodic circuit renewal |
+| Duplicate processing | Content hashing deduplicates across sessions |
+| Privilege escalation | Docker image runs as an unprivileged `harvester` user |
+| Dependency vulnerabilities | CI runs `pip-audit` on every push |
 
 ---
 
 ## Use Cases
 
-- **Threat Intelligence** — monitor dark web forums for emerging attack techniques,
-  leaked credentials, or planned campaigns against your organisation.
-- **Data Breach Detection** — identify when company data or customer PII appears
-  on dark web marketplaces.
-- **Law Enforcement** — support investigations by systematically indexing
-  hidden service content.
-- **Corporate Security** — detect brand abuse, phishing kits, or counterfeits
-  distributed through hidden channels.
-- **Academic Research** — study dark web ecosystem trends, service lifecycles,
-  and underground market dynamics.
-- **Proactive Defence** — enrich threat intelligence feeds with dark web
-  indicators of compromise (IoCs).
+**Threat intelligence monitoring** — Systematically index dark web forums, marketplaces, and paste sites for indicators of compromise, leaked credentials, or advance notice of planned attacks.
+
+**Data breach detection** — Identify when proprietary data, customer records, or authentication material appears on hidden services. Alert security teams for rapid response.
+
+**Law enforcement support** — Provide investigators with a reproducible, auditable method to collect and preserve evidence from hidden services.
+
+**Brand and IP protection** — Detect counterfeit goods, pirated software, and fraudulent services impersonating legitimate organisations.
+
+**Competitive intelligence and research** — Study dark web ecosystem structure, service uptime patterns, and underground market dynamics for academic or commercial research.
+
+**Proactive defence** — Build continuously updated threat intelligence databases to enrich SIEM platforms, feed anomaly detection models, and improve security posture.
 
 ---
 
@@ -400,46 +434,50 @@ mypy deepwebharvester               # type check
 
 ```bash
 sudo systemctl status tor
-# If active (exited) rather than active (running):
+
+# If the status shows "active (exited)" rather than "active (running)":
 sudo systemctl restart tor
-ss -aln | grep 9050          # SOCKS port should be listening
+
+# Confirm the SOCKS port is listening
+ss -aln | grep 9050
 ```
 
-### Verify Tor connection manually
+### Verify Tor connectivity
 
 ```bash
 curl --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip
-# Should return: {"IsTor":true, "IP":"..."}
+# Expected: {"IsTor":true, "IP":"..."}
 ```
 
 ### Circuit renewal fails
 
-Check that `ControlPort` and `HashedControlPassword` are set in `/etc/tor/torrc`
-and that the plain-text password in `TOR_CONTROL_PASSWORD` matches the hash.
+Confirm that `ControlPort 9051` and a `HashedControlPassword` are set in `/etc/tor/torrc`, and that the plain-text value in `TOR_CONTROL_PASSWORD` matches the hash generated by `tor --hash-password`.
 
 ```bash
-journalctl -xeu tor          # inspect Tor service logs
+journalctl -xeu tor
 ```
 
-### Slow crawling
+### GUI does not start
 
-`.onion` sites are inherently slower than the clear web. The default 7-second
-`crawl_delay` is intentional. Reduce `max_pages` for faster exploratory runs
-or increase `max_workers` to crawl multiple sites in parallel.
+Ensure `python3-tk` is installed on your system:
+
+```bash
+sudo apt install python3-tk
+python3 -c "import tkinter; print(tkinter.TkVersion)"
+```
+
+### .onion sites are slow
+
+Hidden services are inherently slower than the clearweb. The default 7-second `crawl_delay` is intentional and reduces detection risk. For exploratory runs, reduce `max_pages` rather than `crawl_delay`.
 
 ---
 
 ## Disclaimer
 
-> This tool is intended **exclusively** for legitimate cybersecurity research,
-> OSINT, and authorised investigations. Unauthorised access to computer systems,
-> harassment, or any illegal activity using this tool is strictly prohibited and
-> may be punishable under applicable national and international laws.
->
-> The author accepts **no responsibility** for any misuse of this software.
-> Users must obtain proper authorisation before targeting any system or service
-> and must comply with all relevant legal and ethical standards.
+This software is intended exclusively for legitimate cybersecurity research, OSINT intelligence gathering, and authorised investigations. Access to computer systems or networks without explicit permission from the owner is illegal in most jurisdictions. The authors accept no responsibility for any unlawful use of this software. Users must obtain proper authorisation before targeting any system or service and must comply with all applicable national and international laws and regulations.
 
 ---
 
-**Creator:** Tech Enthusiast · [LinkedIn](http://linkedin.com/in/tech-enthusiast-669279263)
+**Author:** Tech Enthusiast
+**Contact:** [LinkedIn](http://linkedin.com/in/tech-enthusiast-669279263)
+**License:** [MIT](LICENSE)
