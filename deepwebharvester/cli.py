@@ -31,6 +31,7 @@ from .intelligence import IntelligenceExtractor
 from .report import ReportGenerator
 from .storage import StorageManager
 from .tor_manager import TorManager
+from .visualizer import GraphVisualizer
 
 # ── Presentation ──────────────────────────────────────────────────────────────
 
@@ -336,6 +337,21 @@ def main(argv: Optional[List[str]] = None) -> int:
             logger.info("HTML report written → %s", report_path)
         except Exception as exc:
             logger.warning("Could not generate HTML report: %s", exc)
+
+    # ── 3D network graph PNG ──────────────────────────────────────────────────
+    if results:
+        try:
+            from pathlib import Path as _Path
+            graph_path = str(
+                _Path(cfg.storage.output_dir) / "network_graph.png"
+            )
+            viz = GraphVisualizer()
+            saved = viz.save_png(results, intel_data or None,
+                                 output_path=graph_path, dpi=150)
+            paths["graph"] = saved
+            logger.info("3D network graph saved → %s", saved)
+        except Exception as exc:
+            logger.warning("Could not save 3D graph: %s", exc)
 
     _print_summary(crawler.stats, paths, intel_stats)
 

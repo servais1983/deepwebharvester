@@ -25,6 +25,7 @@ from typing import Dict, List, Optional
 
 from .crawler import CrawlResult
 from .intelligence import IntelligenceExtractor, PageIntelligence
+from .visualizer import GraphVisualizer
 
 # ---------------------------------------------------------------------------
 # CSS — embedded, no external dependencies
@@ -324,11 +325,21 @@ class ReportGenerator:
         ]
         high_risk_pages.sort(key=lambda x: x[1].threat.risk_score, reverse=True)
 
+        # 3D graph — gracefully skipped if matplotlib is unavailable
+        graph_section = ""
+        try:
+            viz = GraphVisualizer()
+            b64 = viz.to_png_base64(results, intel, dpi=100)
+            graph_section = self._graph_section(b64)
+        except Exception as exc:
+            logger.debug("3D graph generation skipped: %s", exc)
+
         body = (
             self._header(ts, __version__, len(results), len(sites))
             + '<div class="container">'
             + self._summary_cards(results, intel, total_iocs)
             + self._risk_distribution(risk_dist, len(results))
+            + graph_section
             + self._ioc_summary(intel)
             + self._high_risk_section(high_risk_pages)
             + self._site_breakdown(results, intel, sites)
@@ -427,6 +438,31 @@ class ReportGenerator:
             "</div>"
         )
 
+    def _graph_section(self, b64_png: str) -> str:
+        """Section 03 — embedded 3D network graph."""
+        return (
+            '<div class="section">'
+            '<div class="section-title">'
+            '<span class="accent">03.</span> 3D Network Graph'
+            '</div>'
+            '<p style="color:#6e7681;font-size:12px;margin-bottom:16px">'
+            'Force-directed 3D layout. '
+            'Stars (&#9733;) = site hubs &nbsp;|&nbsp; '
+            'Circles = pages &nbsp;|&nbsp; '
+            'Node size &#8733; IOC count &nbsp;|&nbsp; '
+            'Colour = risk level '
+            '(<span style="color:#3fb950">Low</span> / '
+            '<span style="color:#e3b341">Medium</span> / '
+            '<span style="color:#ffa657">High</span> / '
+            '<span style="color:#ff7b72">Critical</span>)'
+            '</p>'
+            f'<img src="data:image/png;base64,{b64_png}" '
+            'style="width:100%;max-width:1100px;border-radius:8px;'
+            'border:1px solid #21262d;" '
+            'alt="3D Network Graph">'
+            '</div>'
+        )
+
     def _ioc_summary(self, intel: List[PageIntelligence]) -> str:
         # Aggregate unique IOCs across all pages
         all_ipv4   = sorted({ip  for p in intel for ip  in p.iocs.ipv4})
@@ -472,7 +508,7 @@ class ReportGenerator:
 
         return (
             '<div class="section">'
-            '<div class="section-title"><span class="accent">03.</span> IOC Registry</div>'
+            '<div class="section-title"><span class="accent">04.</span> IOC Registry</div>'
             + (content or "<p style='color:#6e7681'>No IOCs extracted.</p>")
             + "</div>"
         )
@@ -483,7 +519,7 @@ class ReportGenerator:
         if not pages:
             return (
                 '<div class="section">'
-                '<div class="section-title"><span class="accent">04.</span> High-Risk Pages</div>'
+                '<div class="section-title"><span class="accent">05.</span> High-Risk Pages</div>'
                 "<p style='color:#6e7681'>No high-risk pages detected.</p>"
                 "</div>"
             )
@@ -503,7 +539,7 @@ class ReportGenerator:
             )
         return (
             '<div class="section">'
-            '<div class="section-title"><span class="accent">04.</span> High-Risk Pages</div>'
+            '<div class="section-title"><span class="accent">05.</span> High-Risk Pages</div>'
             '<div class="table-wrap">'
             "<table>"
             "<thead><tr>"
@@ -561,7 +597,7 @@ class ReportGenerator:
 
         return (
             '<div class="section">'
-            '<div class="section-title"><span class="accent">05.</span> Site Breakdown</div>'
+            '<div class="section-title"><span class="accent">06.</span> Site Breakdown</div>'
             + cards
             + "</div>"
         )
@@ -583,7 +619,7 @@ class ReportGenerator:
             )
         return (
             '<div class="section">'
-            '<div class="section-title"><span class="accent">06.</span> Crawled URL Index</div>'
+            '<div class="section-title"><span class="accent">07.</span> Crawled URL Index</div>'
             '<div class="table-wrap"><table>'
             "<thead><tr><th>URL</th><th>Title</th><th>Depth</th>"
             "<th>Risk</th><th>IOCs</th><th>Hash</th></tr></thead>"

@@ -34,6 +34,7 @@ from .intelligence import IntelligenceExtractor
 from .report import ReportGenerator
 from .storage import StorageManager
 from .tor_manager import TorManager
+from .visualizer import GraphVisualizer
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -208,6 +209,8 @@ class App(tk.Tk):
         self._result_paths: dict = {}
         self._crawl_results: list[CrawlResult] = []
         self._intel_stats: dict = {}
+        self._intel_data: list = []           # List[PageIntelligence]
+        self._graph_canvas: Optional[object] = None  # FigureCanvasTkAgg
 
         # Logging
         self._setup_logging()
@@ -498,6 +501,12 @@ class App(tk.Tk):
         self._results_frame = res_tab
         self._build_results_placeholder(res_tab)
 
+        # -- 3D Graph tab ------------------------------------------------------
+        graph_tab = tk.Frame(self._notebook, bg=_PALETTE["bg"])
+        self._notebook.add(graph_tab, text="  3D Network  ")
+        self._graph_frame = graph_tab
+        self._build_graph_placeholder(graph_tab)
+
     def _build_results_placeholder(self, parent: tk.Widget) -> None:
         tk.Label(
             parent,
@@ -505,6 +514,119 @@ class App(tk.Tk):
             bg=_PALETTE["panel"], fg=_PALETTE["fg_dim"],
             font=_FONT_LABEL, justify=tk.CENTER,
         ).pack(expand=True)
+
+    def _build_graph_placeholder(self, parent: tk.Widget) -> None:
+        tk.Label(
+            parent,
+            text=(
+                "3D Network Graph\n\n"
+                "Complete a crawl to visualise the network.\n\n"
+                "Nodes are sized by IOC count.\n"
+                "Colour encodes risk level:\n"
+                "  green = Low   yellow = Medium\n"
+                "  orange = High   red = Critical\n\n"
+                "Drag to rotate — scroll to zoom."
+            ),
+            bg=_PALETTE["bg"], fg=_PALETTE["fg_dim"],
+            font=_FONT_LABEL, justify=tk.CENTER,
+        ).pack(expand=True)
+
+    def _render_3d_graph(self) -> None:
+        """Build and embed the 3D matplotlib graph in the Graph tab."""
+        for widget in self._graph_frame.winfo_children():
+            widget.destroy()
+        self._graph_canvas = None
+
+        if not self._crawl_results:
+            self._build_graph_placeholder(self._graph_frame)
+            return
+
+        try:
+            from matplotlib.backends.backend_tkagg import (
+                FigureCanvasTkAgg,
+                NavigationToolbar2Tk,
+            )
+        except ImportError:
+            tk.Label(
+                self._graph_frame,
+                text="matplotlib with Tk backend is required for the 3D graph.\n"
+                     "Install it:  pip install matplotlib",
+                bg=_PALETTE["bg"], fg=_PALETTE["error"],
+                font=_FONT_LABEL, justify=tk.CENTER,
+            ).pack(expand=True)
+            return
+
+        # Info bar
+        info_bar = tk.Frame(self._graph_frame, bg=_PALETTE["border"], pady=4)
+        info_bar.pack(fill=tk.X)
+        tk.Label(
+            info_bar,
+            text=(
+                f"  {len(self._crawl_results)} page(s)  |  "
+                f"{len({r.site for r in self._crawl_results})} site(s)  |  "
+                "Drag to rotate  •  Scroll to zoom  •  Right-click to pan"
+            ),
+            bg=_PALETTE["border"], fg=_PALETTE["fg_dim"],
+            font=_FONT_SMALL,
+        ).pack(side=tk.LEFT, padx=8)
+
+        # Render in background thread to keep UI responsive
+        def _do_render():
+            try:
+                viz = GraphVisualizer()
+                fig = viz.build_figure(
+                    self._crawl_results,
+                    self._intel_data or None,
+                    figsize=(11, 9),
+                    dark=True,
+                )
+                self.after(0, lambda: self._embed_figure(fig, info_bar))
+            except Exception as exc:
+                logging.warning("3D graph render failed: %s", exc)
+                self.after(0, lambda: tk.Label(
+                    self._graph_frame,
+                    text=f"Could not render graph:\n{exc}",
+                    bg=_PALETTE["bg"], fg=_PALETTE["error"],
+                    font=_FONT_LABEL, justify=tk.CENTER,
+                ).pack(expand=True))
+
+        threading.Thread(target=_do_render, daemon=True).start()
+
+        # Show spinner while rendering
+        tk.Label(
+            self._graph_frame,
+            text="Rendering 3D graph…",
+            bg=_PALETTE["bg"], fg=_PALETTE["fg_dim"],
+            font=_FONT_LABEL,
+        ).pack(expand=True)
+
+    def _embed_figure(self, fig, info_bar: tk.Widget) -> None:
+        """Swap the spinner label for the actual matplotlib canvas."""
+        # Remove spinner
+        for w in self._graph_frame.winfo_children():
+            if w is not info_bar:
+                w.destroy()
+
+        try:
+            from matplotlib.backends.backend_tkagg import (
+                FigureCanvasTkAgg,
+                NavigationToolbar2Tk,
+            )
+            canvas = FigureCanvasTkAgg(fig, master=self._graph_frame)
+            canvas.draw()
+
+            toolbar_frame = tk.Frame(self._graph_frame, bg=_PALETTE["bg"])
+            toolbar_frame.pack(fill=tk.X)
+            toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
+            toolbar.config(bg=_PALETTE["bg"])
+            toolbar.update()
+
+            widget = canvas.get_tk_widget()
+            widget.configure(bg=_PALETTE["bg"])
+            widget.pack(fill=tk.BOTH, expand=True)
+            self._graph_canvas = canvas
+        except Exception as exc:
+            logging.warning("Could not embed 3D figure: %s", exc)
 
     def _build_results_panel(self) -> None:
         for widget in self._results_frame.winfo_children():
@@ -906,6 +1028,7 @@ class App(tk.Tk):
                         "emails":         sum(len(p.iocs.emails) for p in intel_data),
                         "top_categories": [cat for cat, _ in cat_counter.most_common(3)],
                     }
+                    self._intel_data = intel_data
                     logging.info("Intelligence: %d IOC(s), %d High/Critical", total_iocs, high_risk)
                 except Exception as exc:
                     logging.warning("Intelligence extraction failed: %s", exc)
@@ -946,6 +1069,7 @@ class App(tk.Tk):
             f"{stats.elapsed:.1f}s elapsed ==="
         )
         self._build_results_panel()
+        self._render_3d_graph()
         self._notebook.select(1)
 
     def _on_crawl_error(self, error: str) -> None:
