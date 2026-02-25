@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import re
 from typing import List, Set, Tuple
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlunparse, parse_qsl, urlencode
 
 from bs4 import BeautifulSoup
 
@@ -48,6 +48,27 @@ class PageExtractor:
         parsed = urlparse(url)
         return f"{parsed.scheme}://{parsed.netloc}"
 
+    @staticmethod
+    def canonicalize_url(url: str) -> str:
+        """
+        Normalize *url* to a canonical form to improve deduplication.
+
+        Transformations applied:
+        - Lowercase scheme and host
+        - Remove URL fragment (``#...``)
+        - Remove trailing slash on non-root paths
+        - Sort query parameters alphabetically
+        - Remove empty query parameters (``?key=``)
+        """
+        parsed = urlparse(url)
+        scheme = parsed.scheme.lower()
+        netloc = parsed.netloc.lower()
+        path = parsed.path.rstrip("/") or "/"
+        # Sort and drop empty query params
+        query_pairs = [(k, v) for k, v in parse_qsl(parsed.query) if v]
+        query = urlencode(sorted(query_pairs))
+        return urlunparse((scheme, netloc, path, "", query, ""))
+
     # ── Extraction ────────────────────────────────────────────────────────────
 
     def extract_links(self, base_url: str, soup: BeautifulSoup) -> Set[str]:
@@ -59,7 +80,7 @@ class PageExtractor:
             soup:     Parsed HTML document.
 
         Returns:
-            A set of absolute, fragment-stripped .onion URLs.
+            A set of canonicalized .onion URLs.
         """
         links: Set[str] = set()
         for tag in soup.find_all("a", href=True):
@@ -68,7 +89,7 @@ class PageExtractor:
                 continue
             full_url = urljoin(base_url, href).split("#")[0]
             if self.is_valid_onion_url(full_url):
-                links.add(full_url)
+                links.add(self.canonicalize_url(full_url))
         return links
 
     def extract_content(
@@ -87,7 +108,7 @@ class PageExtractor:
             * **title** – page ``<title>`` text or ``"No Title"``.
             * **text**  – cleaned visible body text.
             * **content_hash** – SHA-256 hex digest of *text* for deduplication.
-            * **links** – list of valid .onion URLs found on the page.
+            * **links** – list of canonicalized .onion URLs found on the page.
         """
         soup = BeautifulSoup(html, "lxml")
 

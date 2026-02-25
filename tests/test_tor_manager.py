@@ -186,3 +186,147 @@ class TestVerifyConnection:
         mock_session.get.side_effect = Exception("network error")
         manager.create_session = lambda: mock_session  # type: ignore
         assert manager.verify_connection() is False
+
+
+# ── Additional edge-case tests ────────────────────────────────────────────────
+
+
+class TestRenewCircuitEdgeCases:
+    """
+    Additional tests for renew_circuit failure paths that are not covered
+    by the skip-stem guard.  These patch the lazy imports inside the module
+    so that stem is never actually required.
+    """
+
+    def test_connection_refused_returns_false(self, manager: TorManager) -> None:
+        """Controller.from_port raising ConnectionRefusedError → False."""
+        mock_controller_cls = MagicMock()
+        mock_controller_cls.from_port.side_effect = ConnectionRefusedError(
+            "Connection refused"
+        )
+        mock_signal = MagicMock()
+
+        with patch.dict(
+            "sys.modules",
+            {
+                "stem": MagicMock(Signal=mock_signal),
+                "stem.control": MagicMock(Controller=mock_controller_cls),
+            },
+        ):
+            # Re-run renew_circuit with the patched modules available
+            result = manager.renew_circuit()
+        assert result is False
+
+    def test_authentication_error_returns_false(self, manager: TorManager) -> None:
+        """Controller.authenticate raising an exception → False."""
+        mock_ctrl = MagicMock()
+        mock_ctrl.authenticate.side_effect = Exception("Authentication failed")
+        mock_ctrl.__enter__ = lambda s: mock_ctrl
+        mock_ctrl.__exit__ = MagicMock(return_value=False)
+
+        mock_controller_cls = MagicMock()
+        mock_controller_cls.from_port.return_value = mock_ctrl
+        mock_signal = MagicMock()
+
+        with patch.dict(
+            "sys.modules",
+            {
+                "stem": MagicMock(Signal=mock_signal),
+                "stem.control": MagicMock(Controller=mock_controller_cls),
+            },
+        ):
+            result = manager.renew_circuit()
+        assert result is False
+
+    def test_newnym_signal_failure_returns_false(self, manager: TorManager) -> None:
+        """ctrl.signal(NEWNYM) raising an exception → False."""
+        mock_ctrl = MagicMock()
+        mock_ctrl.authenticate.return_value = None
+        mock_ctrl.signal.side_effect = Exception("NEWNYM failed")
+        mock_ctrl.__enter__ = lambda s: mock_ctrl
+        mock_ctrl.__exit__ = MagicMock(return_value=False)
+
+        mock_controller_cls = MagicMock()
+        mock_controller_cls.from_port.return_value = mock_ctrl
+        mock_signal = MagicMock()
+
+        with patch.dict(
+            "sys.modules",
+            {
+                "stem": MagicMock(Signal=mock_signal),
+                "stem.control": MagicMock(Controller=mock_controller_cls),
+            },
+        ):
+            result = manager.renew_circuit()
+        assert result is False
+
+    def test_circuits_renewed_not_incremented_on_failure(
+        self, manager: TorManager
+    ) -> None:
+        """Counter should stay at 0 when renewal fails."""
+        mock_controller_cls = MagicMock()
+        mock_controller_cls.from_port.side_effect = OSError("Tor not running")
+        mock_signal = MagicMock()
+
+        with patch.dict(
+            "sys.modules",
+            {
+                "stem": MagicMock(Signal=mock_signal),
+                "stem.control": MagicMock(Controller=mock_controller_cls),
+            },
+        ):
+            manager.renew_circuit()
+        assert manager._circuits_renewed == 0
+
+
+class TestVerifyConnectionEdgeCases:
+    """Additional verify_connection edge cases."""
+
+    def test_timeout_exception_returns_false(self, manager: TorManager) -> None:
+        """A requests.Timeout during verify_connection → False."""
+        mock_session = MagicMock()
+        mock_session.get.side_effect = requests.exceptions.Timeout(
+            "Request timed out"
+        )
+        manager.create_session = lambda: mock_session  # type: ignore
+        assert manager.verify_connection() is False
+
+    def test_connection_error_returns_false(self, manager: TorManager) -> None:
+        """A requests.ConnectionError → False."""
+        mock_session = MagicMock()
+        mock_session.get.side_effect = requests.exceptions.ConnectionError(
+            "Could not connect"
+        )
+        manager.create_session = lambda: mock_session  # type: ignore
+        assert manager.verify_connection() is False
+
+    def test_http_error_status_returns_false(self, manager: TorManager) -> None:
+        """An HTTP error status (raise_for_status) → False."""
+        mock_session = MagicMock()
+        mock_response = MagicMock()
+        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
+            "503 Service Unavailable"
+        )
+        mock_session.get.return_value = mock_response
+        manager.create_session = lambda: mock_session  # type: ignore
+        assert manager.verify_connection() is False
+
+    def test_missing_istor_key_treated_as_false(self, manager: TorManager) -> None:
+        """If the API response has no IsTor key, verify_connection should return False."""
+        mock_session = MagicMock()
+        mock_response = MagicMock()
+        # IsTor key missing — dict.get defaults to False
+        mock_response.json.return_value = {"IP": "1.2.3.4"}
+        mock_session.get.return_value = mock_response
+        manager.create_session = lambda: mock_session  # type: ignore
+        assert manager.verify_connection() is False
+
+    def test_istor_false_value_returns_false(self, manager: TorManager) -> None:
+        """Explicit IsTor=False in response → False (also checks non-Tor warning path)."""
+        mock_session = MagicMock()
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"IsTor": False, "IP": "203.0.113.1"}
+        mock_session.get.return_value = mock_response
+        manager.create_session = lambda: mock_session  # type: ignore
+        result = manager.verify_connection()
+        assert result is False

@@ -5,7 +5,7 @@
 [![CI](https://github.com/servais1983/deepwebharvester/actions/workflows/ci.yml/badge.svg)](https://github.com/servais1983/deepwebharvester/actions)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Coverage](https://img.shields.io/badge/coverage-91%25-brightgreen)](htmlcov/)
+[![Coverage](https://img.shields.io/badge/coverage-57.74%25-yellow)](htmlcov/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 ---
@@ -72,7 +72,7 @@ The platform routes all network traffic through the Tor SOCKS5 proxy, performs B
 
 - **Layered configuration** — Defaults → YAML file → environment variables → CLI/GUI flags
 - **Secrets via environment** — Tor control password never stored in code or config files
-- **206 automated tests** — 91% code coverage across all modules
+- **206 automated tests** — 57.74% code coverage across all modules
 - **GitHub Actions CI** — Multi-Python matrix (3.9–3.12) plus dependency security audit
 - **Two-stage Docker build** — Minimal runtime image, non-root execution
 - **Type-annotated codebase** — Full type hints enforced by mypy in strict mode

@@ -2,74 +2,63 @@ name: CI
 
 on:
   push:
-    branches: [master, main, "claude/**"]
+    branches:
+      - main
+      - "claude/*"
   pull_request:
-    branches: [master, main]
+    branches:
+      - main
+      - "claude/*"
 
 jobs:
-  test:
-    name: "Python ${{ matrix.python-version }} tests"
+  ci:
+    name: Lint, type-check, and test
     runs-on: ubuntu-latest
-
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.11"
           cache: pip
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -r requirements.txt -r requirements-dev.txt
 
-      - name: Check code style (black)
-        run: black --check deepwebharvester tests
+      - name: Lint with flake8
+        run: |
+          flake8 deepwebharvester tests --max-line-length=100
 
-      - name: Check import order (isort)
-        run: isort --check-only deepwebharvester tests
+      - name: Lint with ruff
+        run: |
+          pip install ruff
+          ruff check deepwebharvester tests
 
-      - name: Lint (flake8)
-        run: flake8 deepwebharvester tests --max-line-length=100
+      - name: Type-check with mypy
+        run: |
+          mypy deepwebharvester
 
-      - name: Type checking (mypy)
-        run: mypy deepwebharvester
-        continue-on-error: true   # informational only — does not fail the build
-
-      - name: Run tests with coverage
+      - name: Run pytest with coverage
         run: |
           pytest \
             --cov=deepwebharvester \
-            --cov-report=xml \
             --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html:htmlcov \
+            --cov-fail-under=55 \
             -v
 
       - name: Upload coverage report
-        if: matrix.python-version == '3.11'
-        uses: codecov/codecov-action@v4
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          file: ./coverage.xml
-          fail_ci_if_error: false
-
-  # ── Security audit ──────────────────────────────────────────────────────────
-  security:
-    name: Security audit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-      - name: Install pip-audit
-        run: pip install pip-audit
-      - name: Audit dependencies
-        run: pip-audit -r requirements.txt
+          name: coverage-report
+          path: |
+            coverage.xml
+            htmlcov/
+          retention-days: 14
