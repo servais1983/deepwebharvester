@@ -334,32 +334,34 @@ class ReportGenerator:
         except Exception as exc:
             logger.debug("3D graph generation skipped: %s", exc)
 
-        body = (
-            self._header(ts, __version__, len(results), len(sites))
-            + '<div class="container">'
-            + self._summary_cards(results, intel, total_iocs)
-            + self._risk_distribution(risk_dist, len(results))
-            + graph_section
-            + self._ioc_summary(intel)
-            + self._high_risk_section(high_risk_pages)
-            + self._site_breakdown(results, intel, sites)
-            + self._url_index(results, intel)
-            + self._footer(__version__, ts)
-            + "</div>"
-        )
+        body_parts = [
+            self._header(ts, __version__, len(results), len(sites)),
+            '<div class="container">',
+            self._summary_cards(results, intel, total_iocs),
+            self._risk_distribution(risk_dist, len(results)),
+            graph_section,
+            self._ioc_summary(intel),
+            self._high_risk_section(high_risk_pages),
+            self._site_breakdown(results, intel, sites),
+            self._url_index(results, intel),
+            self._footer(__version__, ts),
+            "</div>",
+        ]
+        body = "".join(body_parts)
 
-        return (
-            "<!DOCTYPE html>\n"
-            '<html lang="en">\n'
-            "<head>\n"
-            '<meta charset="UTF-8">\n'
-            '<meta name="viewport" content="width=device-width,initial-scale=1">\n'
-            f"<title>DeepWebHarvester Report — {_e(ts.strftime('%Y-%m-%d %H:%M UTC'))}</title>\n"
-            f"<style>{_CSS}</style>\n"
-            "</head>\n"
-            f"<body>{body}</body>\n"
-            "</html>"
-        )
+        parts = [
+            "<!DOCTYPE html>\n",
+            '<html lang="en">\n',
+            "<head>\n",
+            '<meta charset="UTF-8">\n',
+            '<meta name="viewport" content="width=device-width,initial-scale=1">\n',
+            f"<title>DeepWebHarvester Report — {_e(ts.strftime('%Y-%m-%d %H:%M UTC'))}</title>\n",
+            f"<style>{_CSS}</style>\n",
+            "</head>\n",
+            f"<body>{body}</body>\n",
+            "</html>",
+        ]
+        return "".join(parts)
 
     def _header(
         self, ts: datetime, version: str, pages: int, sites: int

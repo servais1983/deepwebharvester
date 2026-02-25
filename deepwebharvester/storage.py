@@ -74,8 +74,15 @@ class StorageManager:
 
     # ── SQLite ────────────────────────────────────────────────────────────────
 
+    # Seconds to wait for a database lock before raising OperationalError
+    _DB_TIMEOUT: float = 10.0
+
+    def _connect(self) -> sqlite3.Connection:
+        """Open a SQLite connection with a sensible lock timeout."""
+        return sqlite3.connect(self._db_path, timeout=self._DB_TIMEOUT)
+
     def _init_db(self) -> None:
-        with sqlite3.connect(self._db_path) as conn:
+        with self._connect() as conn:
             conn.executescript(_SCHEMA)
             # Migrate existing databases that predate the ioc_data column
             try:
@@ -93,7 +100,7 @@ class StorageManager:
         """
         if not self.sqlite_output or not self._db_path.exists():
             return set()
-        with sqlite3.connect(self._db_path) as conn:
+        with self._connect() as conn:
             rows = conn.execute("SELECT url FROM crawl_results").fetchall()
         return {row[0] for row in rows}
 
@@ -121,7 +128,7 @@ class StorageManager:
         if intel:
             intel_map = {p.url: json.dumps(p.iocs.as_dict()) for p in intel}
 
-        with sqlite3.connect(self._db_path) as conn:
+        with self._connect() as conn:
             for r in results:
                 ioc_json = intel_map.get(r.url)
                 try:
