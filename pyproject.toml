@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deepwebharvester"
-version = "2.0.0"
+version = "2.1.0"
 description = "Advanced OSINT dark web intelligence gathering tool via Tor"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -35,24 +35,38 @@ dependencies = [
     "lxml>=4.9.0",
     "python-dotenv>=1.0.0",
     "PyYAML>=6.0.1",
+    "matplotlib>=3.8.0",
+    "networkx>=3.2.0",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=7.4.0",
-    "pytest-cov>=4.1.0",
-    "pytest-mock>=3.11.0",
-    "black>=23.7.0",
-    "isort>=5.12.0",
-    "mypy>=1.5.0",
-    "flake8>=6.1.0",
-    "types-PyYAML>=6.0.12",
-    "types-requests>=2.31.0",
+async = [
+    "aiohttp>=3.9.0",
+    "aiohttp-socks>=0.8.4",
 ]
+api = [
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.29.0",
+    "pydantic>=2.6.0",
+]
+observability = [
+    "prometheus-client>=0.20.0",
+]
+cache = [
+    "redis>=5.0.0",
+]
+intel = [
+    "stix2>=3.0.1",
+]
+full = [
+    "deepwebharvester[async,api,observability,cache,intel]",
+]
+
 
 [project.scripts]
 deepwebharvester     = "deepwebharvester.cli:main"
 deepwebharvester-gui = "deepwebharvester.gui:main"
+deepwebharvester-api = "deepwebharvester.api_server:main"
 
 [project.urls]
 Homepage = "https://github.com/servais1983/deepwebharvester"
@@ -90,7 +104,14 @@ addopts   = [
 
 [tool.coverage.run]
 source   = ["deepwebharvester"]
-omit     = ["*/tests/*"]
+omit     = [
+    "*/tests/*",
+    "deepwebharvester/gui.py",
+    "deepwebharvester/visualizer.py",
+    "deepwebharvester/report.py",
+    "deepwebharvester/cli.py",
+    "deepwebharvester/api_server.py",
+]
 
 [tool.coverage.report]
 show_missing    = true

@@ -1,48 +1,130 @@
 version: "3.9"
 
-# ── Services ──────────────────────────────────────────────────────────────────
+# ── Shared environment ────────────────────────────────────────────────────────
+x-common-env: &common-env
+  TOR_SOCKS_PORT: "9050"
+  TOR_CONTROL_PORT: "9051"
+  TOR_CONTROL_PASSWORD: "${TOR_CONTROL_PASSWORD}"
+  LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+  OUTPUT_DIR: "/app/results"
+  REDIS_URL: "redis://redis:6379/0"
+  DWH_API_KEY: "${DWH_API_KEY:-changeme}"
+  DWH_ALERT_MIN_RISK: "${DWH_ALERT_MIN_RISK:-High}"
+  DWH_SLACK_WEBHOOK: "${DWH_SLACK_WEBHOOK:-}"
+
 services:
 
-  # Tor proxy — provides SOCKS5 on :9050 and control port on :9051
+  # ── Tor anonymisation proxy ───────────────────────────────────────────────
   tor:
     image: dperson/torproxy:latest
+    restart: unless-stopped
+    networks:
+      - internal
+    environment:
+      TOR_MaxCircuitDirtiness: "600"
+      TOR_NewCircuitPeriod: "30"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "--socks5", "127.0.0.1:9050",
+             "https://check.torproject.org/api/ip"]
+      interval: 30s
+      timeout: 20s
+      retries: 5
+      start_period: 30s
     ports:
       - "9050:9050"
       - "9051:9051"
-    environment:
-      # Set a password for the Tor control port.
-      # The same value must be in TOR_CONTROL_PASSWORD below.
-      PASSWORD: "${TOR_CONTROL_PASSWORD:-changeme}"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "--socks5-hostname", "localhost:9050",
-             "-s", "https://check.torproject.org/api/ip"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
 
-  # DeepWebHarvester — the OSINT crawler
-  harvester:
+  # ── Redis distributed cache ───────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - internal
+    command: redis-server --save "" --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - redis_data:/data
+
+  # ── DeepWebHarvester API ──────────────────────────────────────────────────
+  api:
     build:
       context: .
       dockerfile: Dockerfile
+      target: runtime
+    restart: unless-stopped
     depends_on:
       tor:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+      - external
+    ports:
+      - "${DWH_API_PORT:-8000}:8000"
+      - "${DWH_METRICS_PORT:-9090}:9090"
     environment:
-      TOR_CONTROL_PASSWORD: "${TOR_CONTROL_PASSWORD:-changeme}"
-      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      <<: *common-env
+      TOR_SOCKS_HOST: "tor"
     volumes:
-      - ./results:/app/results
-      - ./logs:/app/logs
-      # Mount a config file if you have one (optional)
-      - ./config.yaml:/app/config.yaml:ro
-    command:
-      - "--config"
-      - "/app/config.yaml"
-      - "--verify-tor"
+      - results:/app/results
+      - logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    tmpfs:
+      - /tmp
 
-# ── Volumes ───────────────────────────────────────────────────────────────────
+  # ── Prometheus metrics collector ──────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    networks:
+      - internal
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+
+  # ── Grafana dashboard ─────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    networks:
+      - internal
+      - external
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_PASSWORD:-changeme}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+
+networks:
+  internal:
+    driver: bridge
+    internal: true
+  external:
+    driver: bridge
+
 volumes:
+  redis_data:
   results:
   logs:
+  prometheus_data:
+  grafana_data:

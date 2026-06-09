@@ -1,14 +1,14 @@
-# ── Development & testing dependencies ───────────────────────────────────────
-# Install with: pip install -r requirements-dev.txt
-
--r requirements.txt
-
 pytest>=7.4.0
 pytest-cov>=4.1.0
 pytest-mock>=3.11.0
+pytest-asyncio>=0.23.0
+httpx>=0.27.0          # async test client for FastAPI
 black>=23.7.0
 isort>=5.12.0
 mypy>=1.5.0
 flake8>=6.1.0
+ruff>=0.4.0
 types-PyYAML>=6.0.12
 types-requests>=2.31.0
+types-redis>=4.6.0
+pip-audit>=2.7.0

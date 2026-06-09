@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dwh-config
+  namespace: deepwebharvester
+data:
+  LOG_LEVEL: "INFO"
+  OUTPUT_DIR: "/app/results"
+  TOR_SOCKS_HOST: "tor-service"
+  TOR_SOCKS_PORT: "9050"
+  TOR_CONTROL_PORT: "9051"
+  REDIS_URL: "redis://redis-service:6379/0"
+  DWH_ALERT_MIN_RISK: "High"

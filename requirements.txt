@@ -1,6 +1,4 @@
-# ── Runtime dependencies ──────────────────────────────────────────────────────
-# Install with: pip install -r requirements.txt
-
+# ── Core runtime ──────────────────────────────────────────────────────────────
 requests>=2.31.0
 PySocks>=1.7.1
 stem>=1.8.1
@@ -10,3 +8,21 @@ python-dotenv>=1.0.0
 PyYAML>=6.0.1
 matplotlib>=3.8.0
 networkx>=3.2.0
+
+# ── Async crawling ────────────────────────────────────────────────────────────
+aiohttp>=3.9.0
+aiohttp-socks>=0.8.4
+
+# ── REST API ──────────────────────────────────────────────────────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+pydantic>=2.6.0
+
+# ── Observability ─────────────────────────────────────────────────────────────
+prometheus-client>=0.20.0
+
+# ── Distributed cache ─────────────────────────────────────────────────────────
+redis>=5.0.0
+
+# ── Threat intelligence ───────────────────────────────────────────────────────
+stix2>=3.0.1
